@@ -7,3 +7,11 @@ __pycache__/
 checkpoints/
 logs/
 training.log
+
+build/
+dist/
+*.egg-info/
+apdtflow.egg-info/
+
+*.swp
+.DS_Store

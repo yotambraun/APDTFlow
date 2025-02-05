@@ -1,5 +1,7 @@
 License
+MANIFEST.in
 README.md
+pyproject.toml
 setup.py
 apdtflow/__init__.py
 apdtflow/augmentation.py

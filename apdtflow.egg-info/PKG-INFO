@@ -12,6 +12,7 @@ Requires-Dist: pandas
 Requires-Dist: numpy
 Requires-Dist: matplotlib
 Requires-Dist: tensorboard
+Requires-Dist: pyyaml
 Dynamic: author
 Dynamic: author-email
 Dynamic: home-page

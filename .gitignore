@@ -1,0 +1,9 @@
+# Virtual Environment
+venv/
+__pycache__/
+*.pyc
+
+# Checkpoints and Logs
+checkpoints/
+logs/
+training.log

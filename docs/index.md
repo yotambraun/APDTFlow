@@ -176,10 +176,11 @@ python experiments/scripts/infer.py \
 ---
 ## 6. Examples:
 
-Visit the [APDTFlow Examples](experiments/notebooks/tutorial.ipynb) directory for Jupyter Notebook tutorials that demonstrate:
+Visit the [APDTFlow Examples](https://github.com/yotambraun/APDTFlow/blob/main/experiments/notebooks/tutorial.ipynb) directory for Jupyter Notebook tutorials that demonstrate:
 * Exploratory Data Analysis (EDA)
 * Model training and hyperparameter tuning
 * Running inference and interpreting results
+
 
 ---
 ## 7. License

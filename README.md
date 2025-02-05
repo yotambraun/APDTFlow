@@ -1,5 +1,5 @@
 # APDTFlow: A Modular Forecasting Framework for Time Series Data
-
+![APDTFlow Forecast](assets/images/forecast_adtflow.png)
 [![PyPI version](https://img.shields.io/pypi/v/apdtflow.svg)](https://pypi.org/project/apdtflow)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 

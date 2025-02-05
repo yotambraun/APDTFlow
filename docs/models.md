@@ -21,6 +21,8 @@ This document provides an in-depth look at the various forecasting models includ
 
 The **APDTFlow** model is the flagship architecture in the framework. It integrates multiple advanced techniques to capture both global trends and local fluctuations in time series data while also providing uncertainty estimates.
 
+![APDTFlow Forecast Diagram](../assets/images/forecast_adtflow.png)
+*Figure 1: Forecast example comparing the input sequence, true future values, and the model’s predicted future.*
 ### Architecture Details
 
 - **Multi-Scale Decomposition:**  

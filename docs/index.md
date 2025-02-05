@@ -152,6 +152,9 @@ python experiments/scripts/infer.py \
   --batch_size 16
 ```
 
+Below is an example forecast produced by APDTFlow:
+![APDTFlow Forecast](../assets/images/forecast_adtflow.png)
+
 ---
 ## 5. Module Details
 ### Data & Augmentation

@@ -52,9 +52,13 @@ class TransformerForecaster(BaseForecaster):
     def predict(self, new_x, forecast_horizon, device):
         self.eval()
         new_x = new_x.to(device).squeeze(1)
+        # If new_x is 2D, add the feature dimension.
+        if new_x.dim() == 2:
+            new_x = new_x.unsqueeze(-1)  # Now shape is (batch, T_in, 1)
         with torch.no_grad():
             preds = self(new_x)
         return preds, None
+
 
     def evaluate(self, test_loader, device):
         self.eval()

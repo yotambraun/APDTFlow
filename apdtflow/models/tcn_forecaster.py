@@ -75,11 +75,16 @@ class TCNForecaster(BaseForecaster):
 
     def predict(self, new_x, forecast_horizon, device):
         self.eval()
-        new_x = new_x.to(device).squeeze(1)
+        new_x = new_x.to(device)
+        if new_x.dim() == 3:
+            if new_x.size(1) != 1:
+                new_x = new_x[:, 0:1, :]
+        elif new_x.dim() == 2:
+            new_x = new_x.unsqueeze(1)
         with torch.no_grad():
             preds = self(new_x)
         return preds, None
-
+    
     def evaluate(self, test_loader, device):
         self.eval()
         mse_total, mae_total, count = 0.0, 0.0, 0

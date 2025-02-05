@@ -17,3 +17,5 @@ apdtflow.egg-info
 
 *.swp
 .DS_Store
+
+recipe_to_update_pacakge.txt

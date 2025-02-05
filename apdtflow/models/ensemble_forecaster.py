@@ -24,9 +24,19 @@ class EnsembleForecaster(BaseForecaster):
         for model in self.models:
             preds, _ = model.predict(new_x, forecast_horizon, device)
             predictions.append(preds)
-        predictions = torch.stack(predictions)
-        ensemble_preds = torch.sum(predictions * torch.tensor(self.weights).view(-1, 1, 1, 1).to(predictions.device), dim=0)
+        predictions = torch.stack(predictions)  # e.g. shape: (num_models, batch_size, T_out, output_dim) or (num_models, batch_size, T_out)
+        if predictions.dim() == 4:
+            weight_shape = (-1, 1, 1, 1)
+        elif predictions.dim() == 3:
+            weight_shape = (-1, 1, 1)
+        else:
+            raise ValueError("Unexpected predictions dimension: {}".format(predictions.dim()))
+        
+        weights = torch.tensor(self.weights).view(*weight_shape).to(predictions.device)
+        ensemble_preds = torch.sum(predictions * weights, dim=0)
         return ensemble_preds, None
+
+
 
     def evaluate(self, test_loader, device):
         mse_total, mae_total, count = 0.0, 0.0, 0

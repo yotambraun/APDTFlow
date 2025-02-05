@@ -46,20 +46,20 @@ dataset = TimeSeriesWindowDataset(
     csv_file="path/to/your/dataset.csv",
     date_col="DATE",
     value_col="VALUE",
-    T_in=12,
-    T_out=3
+    T_in=12,    # Input sequence length
+    T_out=3     # Forecast horizon (number of future time steps)
 )
 
 train_loader = DataLoader(dataset, batch_size=16, shuffle=True)
 
 # Initialize the model
 model = APDTFlow(
-    num_scales=3,
-    input_channels=1,
-    filter_size=5,
-    hidden_dim=16,
-    output_dim=1,
-    forecast_horizon=3
+    num_scales=3,         # Number of scales to decompose the input signal
+    input_channels=1,     # Number of input channels (typically 1 for univariate time series)
+    filter_size=5,        # Filter size for the dynamic convolution (affects receptive field)
+    hidden_dim=16,        # Hidden dimension size for the dynamics module and decoder
+    output_dim=1,         # Output channels (typically 1 for univariate forecasts)
+    forecast_horizon=3    # Number of future time steps to forecast (should match T_out)
 )
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -111,6 +111,17 @@ model.load_state_dict(torch.load(checkpoint_path, map_location=device))
 mse, mae = model.evaluate(test_loader, device)
 print(f"Test MSE: {mse:.4f}, Test MAE: {mae:.4f}")
 ```
+
+## Core Model Parameters Explained:
+When configuring APDTFlow, several parameters play key roles in how the model processes and forecasts time series data. Here’s what they mean:
+
+* **T_in (Input Sequence Length):** This parameter specifies the number of past time steps the model will use as input. For example, if T_in=12, the model will use the previous 12 observations to make a forecast.
+* **T_out (Forecast Horizon):** This parameter defines the number of future time steps to predict. For instance, if T_out=3, the model will output predictions for the next 3 time steps.
+* **num_scales:** APDTFlow employs a multi-scale decomposition technique to capture both global and local trends in the data. The num_scales parameter determines how many scales (or resolutions) the input signal will be decomposed into. A higher number of scales may allow the model to capture more complex temporal patterns, but it could also increase computational complexity.
+* **filter_size:** This parameter is used in the convolutional component (or dynamic convolution) within the model’s decomposer module. It defines the size of the convolutional filter applied to the input signal, thereby affecting the receptive field. A larger filter size allows the model to consider a broader context in the time series but may smooth out finer details.
+* **forecast_horizon:** This parameter is used within the model to indicate the number of future time steps that the decoder will produce. It should match T_out to ensure consistency between the training data and the model's output.
+* **hidden_dim:** The size of the hidden state in the dynamics module and decoder. This parameter controls the capacity of the model to learn complex representations. Increasing hidden_dim may improve the model’s performance, but at the cost of additional computational resources and potential overfitting if not tuned properly.
+
 
 ## Running Training and Inference from the Command Line
 Your commands already show how to run the training and inference scripts. For clarity, here’s an explanation of the commands you provided:

@@ -12,6 +12,8 @@ build/
 dist/
 *.egg-info/
 apdtflow.egg-info/
+apdtflow.egg-info
+
 
 *.swp
 .DS_Store

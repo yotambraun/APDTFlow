@@ -113,6 +113,7 @@ print(f"Test MSE: {mse:.4f}, Test MAE: {mae:.4f}")
 ```
 
 ## Core Model Parameters Explained:
+For a comprehensive description of each model's architecture and additional details, please see the [Model Architectures Documentation](docs/models.md).
 When configuring APDTFlow, several parameters play key roles in how the model processes and forecasts time series data. Here’s what they mean:
 
 * **T_in (Input Sequence Length):** This parameter specifies the number of past time steps the model will use as input. For example, if T_in=12, the model will use the previous 12 observations to make a forecast.

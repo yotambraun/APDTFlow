@@ -161,8 +161,12 @@ python experiments/scripts/infer.py \
 
 ### Models
 
-* **APDTFlow:** Integrates multi-scale decomposition, neural ODEs, probabilistic fusion, and a Transformer-based decoder.
-* **Other Forecasters:** ransformerForecaster, TCNForecaster, and EnsembleForecaster, which offer alternative architectures for comparison or ensemble learning.
+The framework includes multiple forecasting models. For a detailed explanation of each model's architecture, parameters, and use cases, please refer to the [Model Architectures](models.md) documentation.
+
+- **APDTFlow:** Integrates multi-scale decomposition, neural ODEs, probabilistic fusion, and a Transformer-based decoder.
+- **TransformerForecaster:** Leverages the Transformer architecture for capturing long-range dependencies.
+- **TCNForecaster:** Uses Temporal Convolutional Networks for efficient forecasting.
+- **EnsembleForecaster:** Combines multiple models to improve robustness.
 
 ### Training & Inference Scripts
 * **Training Script (train.py):** Handles data loading, model initialization, training loops, logging, and checkpoint saving.

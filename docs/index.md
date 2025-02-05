@@ -18,13 +18,8 @@ Welcome to the APDTFlow forecasting framework documentation. This guide provides
     - [Models](#models)
     - [Training & Inference Scripts](#training--inference-scripts)
     - [Utilities](#utilities)
-6. [Advanced Topics](#advanced-topics)
-    - [Parameter Tuning](#parameter-tuning)
-    - [Customization and Extensibility](#customization-and-extensibility)
-7. [API Reference](#api-reference)
-8. [Examples and Tutorials](#examples-and-tutorials)
-9. [Contributing](#contributing)
-10. [License](#license)
+6. [Examples and Tutorials](#examples-and-tutorials)
+7. [License](#license)
 
 ---
 
@@ -181,7 +176,7 @@ python experiments/scripts/infer.py \
 ---
 ## 6. Examples:
 
-Visit the [APDTFlow Examples](experiments\notebooks\tutorial.ipynb) directory for Jupyter Notebook tutorials that demonstrate:
+Visit the [APDTFlow Examples](experiments/notebooks/tutorial.ipynb) directory for Jupyter Notebook tutorials that demonstrate:
 * Exploratory Data Analysis (EDA)
 * Model training and hyperparameter tuning
 * Running inference and interpreting results

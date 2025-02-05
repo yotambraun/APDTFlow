@@ -103,3 +103,6 @@ python experiments/scripts/infer.py \
     --batch_size 16
 ```
 Inference logs are written to logs/inference.log and evaluation metrics (MSE and MAE) are printed to the terminal.
+
+## License
+This project is licensed under the MIT License. See the LICENSE file for details.

@@ -182,7 +182,7 @@ These examples can be demonstrated during a presentation or written in your docu
 Full documentation is available in the [APDTFlow documentation](docs/index.md).
 
 ## Configuration
-APDTFlow supports configuration via YAML files. A sample configuration file is available at [sample_config.yaml](https://github.com/yotambraun/APDTFlow/blob/main/config/sample_config.yaml).
+APDTFlow supports configuration via YAML files. A sample configuration file is available at [config.yaml](https://github.com/yotambraun/APDTFlow/blob/main/apdtflow/config/config.yaml).
  You can override these settings using command-line arguments when running the provided scripts (see the experiments/scripts/ directory).
 
 ## License

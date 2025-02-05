@@ -166,10 +166,11 @@ This command:
 These examples can be demonstrated during a presentation or written in your documentation to show users how to work with the framework from the command line.
 
 ## Documentation
-Full documentation is available in the [APDTFlow documentation](C:\Users\yotam\code_projects\APDTFlow\docs\index.md).
+Full documentation is available in the [APDTFlow documentation](docs/index.md).
 
 ## Configuration
-APDTFlow supports configuration via YAML files. A sample configuration file is available at apdtflow/config/sample_config.yaml. You can override these settings using command-line arguments when running the provided scripts (see the experiments/scripts/ directory).
+APDTFlow supports configuration via YAML files. A sample configuration file is available at [apdtflow/config/sample_config.yaml](apdtflow/config/sample_config.yaml).
+ You can override these settings using command-line arguments when running the provided scripts (see the experiments/scripts/ directory).
 
 ## License
-APDTFlow is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+APDTFlow is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.

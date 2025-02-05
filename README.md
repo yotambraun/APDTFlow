@@ -185,4 +185,4 @@ APDTFlow supports configuration via YAML files. A sample configuration file is a
  You can override these settings using command-line arguments when running the provided scripts (see the experiments/scripts/ directory).
 
 ## License
-APDTFlow is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
+APDTFlow is licensed under the MIT License. See the [LICENSE](License) file for more details.

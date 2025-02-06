@@ -54,7 +54,7 @@ Below is an example forecast produced by the APDTFlow model for a forecast horiz
 
 ---
 
-For more detailed information on our experimental setup, hyper-parameter settings, and full results, please refer to the [Mega Experiment Notebook](experiments/notebooks/mega_experiment.ipynb).
+*For a detailed explanation, more plots, and additional analysis of these results, please see our [Experiment Results and Analysis](docs/experiment_results.md) document.*
 
 ---
 

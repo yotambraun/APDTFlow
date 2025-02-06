@@ -7,17 +7,18 @@ with open(os.path.join(this_directory, "README.md"), encoding="utf-8") as fh:
 
 setup(
     name='apdtflow',
-    version='0.1.10',
+    version='0.1.11',
     packages=find_packages(),
     install_requires=[
-        'torch',
-        'torchdiffeq',
-        'pandas',
-        'numpy',
-        'matplotlib',
-        'tensorboard',
-        'pyyaml',
-    ],
+    'torch',
+    'torchdiffeq',
+    'pandas',
+    'numpy',
+    'matplotlib',
+    'tensorboard',
+    'pyyaml',
+    'scikit-learn',
+],
     classifiers=[
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.10",

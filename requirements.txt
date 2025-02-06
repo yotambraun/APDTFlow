@@ -5,3 +5,4 @@ numpy
 matplotlib
 tensorboard
 pyyaml
+scikit-learn

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "apdtflow"  # This was missing, causing the error
-version = "0.1.10"
+version = "0.1.11"
 description = "APDTFlow: A modular forecasting framework for time series data"
 authors = [
     { name = "Yotam Barun", email = "yotambarun93@gmail.com" }
@@ -19,7 +19,8 @@ dependencies = [
     "numpy",
     "matplotlib",
     "tensorboard",
-    "pyyaml"
+    "pyyaml",
+    'scikit-learn'
 ]
 classifiers=[
         "Programming Language :: Python :: 3",

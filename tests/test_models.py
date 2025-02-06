@@ -1,14 +1,21 @@
+import torch
 import pytest
-from apdtflow.data import TimeSeriesWindowDataset
-import pandas as pd
+from apdtflow.models.apdtflow import APDTFlow
 
-def test_dataset_loading(tmp_path):
-    data = {'DATE': pd.date_range(start='2020-01-01', periods=30),
-            'value': list(range(30))}
-    df = pd.DataFrame(data)
-    csv_path = tmp_path / "test.csv"
-    df.to_csv(csv_path, index=False)
+def test_apdtflow_forward():
+    batch_size = 4
+    T_in = 30
+    dummy_input = torch.randn(batch_size, 1, T_in)
+    t_span = torch.linspace(0, 1, steps=T_in)
     
-    dataset = TimeSeriesWindowDataset(str(csv_path), date_col='DATE', value_col='value', T_in=5, T_out=2)
-    expected_length = 30 - (5 + 2) + 1
-    assert len(dataset) == expected_length
+    model = APDTFlow(
+        num_scales=3,
+        input_channels=1,
+        filter_size=5,
+        hidden_dim=16,
+        output_dim=1,
+        forecast_horizon=3
+    )
+    preds, pred_logvars = model(dummy_input, t_span)
+    assert preds.shape == (batch_size, 3, 1)
+    assert pred_logvars.shape == (batch_size, 3, 1)

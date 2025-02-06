@@ -21,3 +21,5 @@ apdtflow.egg-info
 recipe_to_update_pacakge.txt
 
 .pypirc
+
+.pytest_cache

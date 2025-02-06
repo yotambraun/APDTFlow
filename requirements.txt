@@ -6,3 +6,4 @@ matplotlib
 tensorboard
 pyyaml
 scikit-learn
+statsmodels

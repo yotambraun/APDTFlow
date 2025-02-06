@@ -16,6 +16,9 @@ class TimeSeriesCVFactory:
             val_size (int): Number of samples for validation.
             step_size (int): How many samples to move forward in each split.
         """
+        allowed_methods = {"rolling", "expanding", "blocked"}
+        if method not in allowed_methods:
+            raise ValueError(f"Cross-validation method '{method}' is not supported.")
         self.dataset = dataset
         self.method = method
         self.train_size = train_size

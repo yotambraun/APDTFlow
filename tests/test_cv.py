@@ -29,10 +29,12 @@ def test_cv_factory_rolling():
 def test_cv_factory_invalid_method():
     dataset = DummyDataset(length=50)
     with pytest.raises(ValueError):
-        _ = TimeSeriesCVFactory(
+        factory = TimeSeriesCVFactory(
             dataset=dataset,
             method="unsupported_method",
             train_size=30,
             val_size=5,
             step_size=5
         )
+        factory.get_splits()
+

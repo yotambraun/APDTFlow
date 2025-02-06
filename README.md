@@ -29,6 +29,7 @@ The bar plot below summarizes the average validation losses (lower is better) fo
 
 *Explanation:*  
 This plot shows that the APDTFlow model (and possibly the ensemble) generally achieved lower validation losses compared to the other models, especially for longer forecast horizons. This indicates that its multi-scale decomposition and neural ODE dynamics are well-suited for capturing the trends and seasonal patterns in the dataset.
+
 *Discussion:*  
 The plot demonstrates that, overall, the APDTFlow model (and, in some cases, the ensemble) tend to achieve lower validation losses—particularly as the forecast horizon increases.
 

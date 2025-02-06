@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "apdtflow"  # This was missing, causing the error
-version = "0.1.13"
+version = "0.1.14"
 description = "APDTFlow: A modular forecasting framework for time series data"
 authors = [
     { name = "Yotam Barun", email = "yotambarun93@gmail.com" }
@@ -35,3 +35,6 @@ classifiers=[
 Homepage = "https://github.com/yotambraun/APDTFlow"
 Documentation = "https://github.com/yotambraun/APDTFlow"
 Source = "https://github.com/yotambraun/APDTFlow"
+
+[tool.pytest.ini_options]
+addopts = "--cov=apdtflow --cov-report=xml"

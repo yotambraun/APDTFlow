@@ -23,3 +23,7 @@ recipe_to_update_pacakge.txt
 .pypirc
 
 .pytest_cache
+# Coverage reports
+coverage.xml
+.coverage
+htmlcov/

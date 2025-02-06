@@ -8,7 +8,7 @@
 
 APDTFlow is a modern and extensible forecasting framework for time series data that leverages advanced techniques including neural ordinary differential equations (Neural ODEs), transformer-based components, and probabilistic modeling. Its modular design allows researchers and practitioners to experiment with multiple forecasting models and easily extend the framework for new methods.
 
-![APDTFlow Forecast](assets/images/forecast_adtflow.png)
+![APDTFlow Forecast](https://github.com/yotambraun/APDTFlow/blob/main/experiments/results_plots/APDTFlow_Forecast_Horizon_14_CV2.png)
 
 ## Features
 

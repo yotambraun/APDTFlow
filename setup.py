@@ -7,7 +7,7 @@ with open(os.path.join(this_directory, "README.md"), encoding="utf-8") as fh:
 
 setup(
     name='apdtflow',
-    version='0.1.7',
+    version='0.1.8',
     packages=find_packages(),
     install_requires=[
         'torch',
@@ -17,6 +17,13 @@ setup(
         'matplotlib',
         'tensorboard',
         'pyyaml',
+    ],
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Operating System :: OS Independent",
     ],
     description='APDTFlow: A modular forecasting framework for time series data',
     long_description=long_description, 

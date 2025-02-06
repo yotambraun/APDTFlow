@@ -19,3 +19,5 @@ apdtflow.egg-info
 .DS_Store
 
 recipe_to_update_pacakge.txt
+
+.pypirc

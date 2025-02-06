@@ -70,7 +70,7 @@ This example shows how well the model is able to follow the trend of the actual 
 
 ## 5. Full Experiment Notebook
 
-For a complete view of our experimental setup, training routines, and detailed analysis (including additional plots and hyper-parameter tuning), please refer to our [Mega Experiment Notebook](experiments/notebooks/mega_experiment.ipynb).
+For a complete view of our experimental setup, training routines, and detailed analysis (including additional plots and hyper-parameter tuning), please refer to our [Mega Experiment Notebook](https://github.com/yotambraun/APDTFlow/blob/main/experiments/notebooks/mega_experiment.ipynb).
 
 ---
 

@@ -15,6 +15,37 @@ APDTFlow is a modern and extensible forecasting framework for time series data t
 - **Built-in Logging and TensorBoard Support:** Monitor training progress with professional logging and optional TensorBoard integration.
 - **Multiple Architectures:** Choose from APDTFlow, Transformer‑ and TCN‑based forecasters, or build ensembles.
 
+## Experiment Results
+In our mega experiment we compared multiple forecasting models across different forecast horizons using 3-fold cross‑validation. For brevity, below we show two key plots:
+
+1. **Validation Loss Comparison:** A bar plot comparing the average validation losses of the models (APDTFlow, TransformerForecaster, TCNForecaster, and EnsembleForecaster) across forecast horizons.
+2. **Example Forecast (Horizon 7, CV Split 3):** A forecast plot for the APDTFlow model for a 7-step forecast from CV split 3.
+
+## 1. Validation Loss Comparison
+
+The bar plot below summarizes the average validation losses (lower is better) for the different models across the forecast horizons (7, 10, and 30 time steps):
+
+![Validation Loss Comparison](experiments/results_plots/Validation_Loss_Comparison.png)
+
+*Explanation:*  
+This plot shows that the APDTFlow model (and possibly the ensemble) generally achieved lower validation losses compared to the other models, especially for longer forecast horizons. This indicates that its multi-scale decomposition and neural ODE dynamics are well-suited for capturing the trends and seasonal patterns in the dataset.
+
+## 2. Example Forecast Plot (Horizon 7, CV Split 3)
+
+Below is an example forecast produced by the APDTFlow model for a forecast horizon of 7 time steps on the third cross‑validation split:
+
+![Forecast Horizon 7, CV3](experiments/results_plots/APDTFlow_Forecast_Horizon_7_CV3.png)
+
+*Explanation:*  
+- **Input Sequence:** The plot shows the historical input data (the past 30 time steps) in blue.
+- **True Future:** The actual future observations (7 time steps ahead) are shown in dashed orange.
+- **Predicted Future:** The model's forecast for the next 7 time steps is depicted with a dotted line.
+  
+This example demonstrates how well the model captures the underlying trend in the data. For a full overview of the experiment, please refer to the [Mega Experiment Notebook](https://github.com/yourusername/apdtflow_project/blob/main/experiments/notebooks/mega_experiment.ipynb).
+
+For a detailed discussion of our experimental results, see the [Experiment Results and Analysis](docs/experiment_results.md) document.
+
+
 ## Installation
 
 APDTFlow is published on [PyPI](https://pypi.org/project/apdtflow). Install it using `pip`:

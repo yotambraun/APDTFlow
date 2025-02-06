@@ -36,7 +36,7 @@ The plot demonstrates that, overall, the APDTFlow model (and, in some cases, the
 
 The following line plot illustrates how the performance (average validation loss) of each model changes with different forecast horizons. This visualization helps to assess which models maintain consistent performance as the forecast horizon increases.
 
-![Performance vs. Horizon](../experiments/results_plots/Performance_vs_Horizon.png)
+![Performance vs. Horizon](experiments/results_plots/Performance_vs_Horizon.png)
 
 *Discussion:*  
 The line plot reveals the trend in model performance across forecast horizons. It helps us understand which models degrade gracefully (or even improve) as the forecast horizon lengthens.
@@ -45,7 +45,7 @@ The line plot reveals the trend in model performance across forecast horizons. I
 
 Below is an example forecast produced by the APDTFlow model for a forecast horizon of 7 time steps on the third cross-validation split.
 
-![APDTFlow Forecast Horizon 7, CV3](../experiments/results_plots/APDTFlow_Forecast_Horizon_7_CV3.png)
+![APDTFlow Forecast Horizon 7, CV3](experiments/results_plots/APDTFlow_Forecast_Horizon_7_CV3.png)
 
 *Discussion:*  
 - **Input Sequence (Blue):** The historical data (last 30 time steps) used as input.
@@ -54,7 +54,7 @@ Below is an example forecast produced by the APDTFlow model for a forecast horiz
 
 ---
 
-For more detailed information on our experimental setup, hyper-parameter settings, and full results, please refer to the [Mega Experiment Notebook](https://github.com/yourusername/apdtflow_project/blob/main/experiments/notebooks/mega_experiment.ipynb).
+For more detailed information on our experimental setup, hyper-parameter settings, and full results, please refer to the [Mega Experiment Notebook](experiments/notebooks/mega_experiment.ipynb).
 
 ---
 

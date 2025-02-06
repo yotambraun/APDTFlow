@@ -22,6 +22,8 @@ Welcome to the APDTFlow forecasting framework documentation. This guide provides
 7. [License](#license)
 
 ---
+*For a quick overview of the project, please see the [Project README](https://github.com/yotambraun/APDTFlow/tree/main).*
+---
 
 ## 1. Introduction
 

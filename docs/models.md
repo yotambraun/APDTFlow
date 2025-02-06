@@ -177,3 +177,7 @@ The APDTFlow framework provides a suite of powerful forecasting models, each des
 By understanding the architectural details and tuning the key parameters, you can tailor these models to a wide range of time series forecasting tasks. For further information and usage examples, refer to the [Quick Start Guide](../README.md) and additional documentation within the repository.
 
 Happy forecasting!
+
+---
+
+[Return to Project README](https://github.com/yotambraun/APDTFlow/tree/main)

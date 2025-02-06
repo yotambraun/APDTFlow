@@ -85,3 +85,7 @@ The experiment results demonstrate the strengths and trade-offs among the foreca
 For further details and additional plots, please consult the full documentation and experiment notebook provided in our repository.
 
 Happy forecasting!
+
+---
+
+[Return to Project README](https://github.com/yotambraun/APDTFlow/tree/main)

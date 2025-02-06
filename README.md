@@ -27,10 +27,10 @@ The bar plot below summarizes the average validation losses (lower is better) fo
 
 ![Validation Loss Comparison](experiments/results_plots/Validation_Loss_Comparison.png)
 
-*Explanation:*  
+**Explanation:**  
 This plot shows that the APDTFlow model (and possibly the ensemble) generally achieved lower validation losses compared to the other models, especially for longer forecast horizons. This indicates that its multi-scale decomposition and neural ODE dynamics are well-suited for capturing the trends and seasonal patterns in the dataset.
 
-*Discussion:*  
+**Discussion:**  
 The plot demonstrates that, overall, the APDTFlow model (and, in some cases, the ensemble) tend to achieve lower validation losses—particularly as the forecast horizon increases.
 
 ## 2. Performance vs. Forecast Horizon
@@ -39,7 +39,7 @@ The following line plot illustrates how the performance (average validation loss
 
 ![Performance vs. Horizon](experiments/results_plots/Performance_vs_Horizon.png)
 
-*Discussion:*  
+**Discussion:**  
 The line plot reveals the trend in model performance across forecast horizons. It helps us understand which models degrade gracefully (or even improve) as the forecast horizon lengthens.
 
 ## 3. Example Forecast (Horizon 7, CV Split 3)

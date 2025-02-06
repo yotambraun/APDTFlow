@@ -3,6 +3,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Downloads](https://pepy.tech/badge/apdtflow)](https://pepy.tech/project/apdtflow)
 [![Python Versions](https://img.shields.io/pypi/pyversions/apdtflow.svg)](https://pypi.org/project/apdtflow/)
+[![CI](https://github.com/yourusername/APDTFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/APDTFlow/actions)
+[![Coverage](https://codecov.io/gh/yourusername/APDTFlow/branch/main/graph/badge.svg)](https://codecov.io/gh/yourusername/APDTFlow)
+
+
 
 
 APDTFlow is a modern and extensible forecasting framework for time series data that leverages advanced techniques including neural ordinary differential equations (Neural ODEs), transformer-based components, and probabilistic modeling. Its modular design allows researchers and practitioners to experiment with multiple forecasting models and easily extend the framework for new methods.

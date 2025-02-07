@@ -2,6 +2,7 @@ import torch
 from .base_forecaster import BaseForecaster
 from apdtflow.evaluation.regression_evaluator import RegressionEvaluator
 
+
 class EnsembleForecaster(BaseForecaster):
     def __init__(self, models, weights=None):
         """
@@ -31,8 +32,10 @@ class EnsembleForecaster(BaseForecaster):
         elif predictions.dim() == 3:
             weight_shape = (-1, 1, 1)
         else:
-            raise ValueError("Unexpected predictions dimension: {}".format(predictions.dim()))
-        
+            raise ValueError(
+                "Unexpected predictions dimension: {}".format(predictions.dim())
+            )
+
         weights = torch.tensor(self.weights).view(*weight_shape).to(predictions.device)
         ensemble_preds = torch.sum(predictions * weights, dim=0)
         return ensemble_preds, None
@@ -52,5 +55,8 @@ class EnsembleForecaster(BaseForecaster):
                     total_metrics[m] += batch_results[m] * batch_size
                 total_samples += batch_size
         avg_metrics = {m: total_metrics[m] / total_samples for m in metrics}
-        print("Ensemble Evaluation -> " + ", ".join([f"{m}: {avg_metrics[m]:.4f}" for m in metrics]))
+        print(
+            "Ensemble Evaluation -> "
+            + ", ".join([f"{m}: {avg_metrics[m]:.4f}" for m in metrics])
+        )
         return avg_metrics

@@ -1,6 +1,7 @@
 import torch
 from apdtflow.models.multi_scale_decomposer import ResidualMultiScaleDecomposer
 
+
 def test_decomposer_output():
     batch_size = 2
     input_channels = 1

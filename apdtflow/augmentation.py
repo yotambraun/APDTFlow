@@ -1,19 +1,25 @@
 import torch
 import numpy as np
 
+
 def jitter(x, sigma=0.03):
     """Add random Gaussian noise."""
     return x + sigma * torch.randn_like(x)
+
 
 def scaling(x, sigma=0.1):
     """Multiply by a random scaling factor."""
     factor = torch.randn(x.size(0), 1, 1, device=x.device) * sigma + 1.0
     return x * factor
 
+
 def time_warp(x, max_warp=0.2):
     """Time warp via re–interpolation of the series."""
     batch_size, channels, length = x.size()
-    warp = torch.linspace(0, 1, steps=length, device=x.device) + (torch.rand(length, device=x.device) - 0.5) * max_warp
+    warp = (
+        torch.linspace(0, 1, steps=length, device=x.device)
+        + (torch.rand(length, device=x.device) - 0.5) * max_warp
+    )
     warp, _ = torch.sort(warp)
     orig_idx = torch.linspace(0, 1, steps=length, device=x.device)
     x_warped = torch.zeros_like(x)

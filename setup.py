@@ -6,20 +6,20 @@ with open(os.path.join(this_directory, "README.md"), encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name='apdtflow',
-    version='0.1.17',
+    name="apdtflow",
+    version="0.1.18",
     packages=find_packages(),
     install_requires=[
-        'torch',
-        'torchdiffeq',
-        'pandas',
-        'numpy',
-        'matplotlib',
-        'tensorboard',
-        'pyyaml',
-        'scikit-learn',
-        'statsmodels',
-],
+        "torch",
+        "torchdiffeq",
+        "pandas",
+        "numpy",
+        "matplotlib",
+        "tensorboard",
+        "pyyaml",
+        "scikit-learn",
+        "statsmodels",
+    ],
     classifiers=[
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.10",
@@ -27,22 +27,19 @@ setup(
         "Programming Language :: Python :: 3.12",
         "Operating System :: OS Independent",
     ],
-    description='APDTFlow: A modular forecasting framework for time series data',
-    long_description=long_description, 
-    long_description_content_type="text/markdown", 
-    author='Yotam Barun',
-    author_email='yotambarun93@gmail.com',
-    url='https://github.com/yotambraun/APDTFlow',
+    description="APDTFlow: A modular forecasting framework for time series data",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    author="Yotam Barun",
+    author_email="yotambarun93@gmail.com",
+    url="https://github.com/yotambraun/APDTFlow",
     project_urls={
-        'Homepage': 'https://github.com/yotambraun/APDTFlow',
-        'Documentation': 'https://github.com/yotambraun/APDTFlow',
-        'Source': 'https://github.com/yotambraun/APDTFlow',
+        "Homepage": "https://github.com/yotambraun/APDTFlow",
+        "Documentation": "https://github.com/yotambraun/APDTFlow",
+        "Source": "https://github.com/yotambraun/APDTFlow",
     },
-    python_requires='>=3.10',
+    python_requires=">=3.10",
     entry_points={
-        'console_scripts': [
-            'apdtflow=apdtflow.cli:main'
-        ],
+        "console_scripts": ["apdtflow=apdtflow.cli:main"],
     },
 )
-

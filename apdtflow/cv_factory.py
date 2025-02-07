@@ -4,8 +4,11 @@ splits for time series data. This “factory” allows you to choose between dif
 (such as rolling window, expanding window, or blocked splits).
 """
 
+
 class TimeSeriesCVFactory:
-    def __init__(self, dataset, method="rolling", train_size=None, val_size=None, step_size=None):
+    def __init__(
+        self, dataset, method="rolling", train_size=None, val_size=None, step_size=None
+    ):
         """
         Initialize the cross-validation factory.
 
@@ -25,7 +28,7 @@ class TimeSeriesCVFactory:
         self.val_size = val_size
         self.step_size = step_size
         self.n_samples = len(dataset)
-    
+
     def rolling_window_splits(self, max_splits=None):
         """
         Generate splits using a rolling window strategy.
@@ -35,7 +38,9 @@ class TimeSeriesCVFactory:
         count = 0
         while start + self.train_size + self.val_size <= self.n_samples:
             train_indices = list(range(start, start + self.train_size))
-            val_indices = list(range(start + self.train_size, start + self.train_size + self.val_size))
+            val_indices = list(
+                range(start + self.train_size, start + self.train_size + self.val_size)
+            )
             splits.append((train_indices, val_indices))
             start += self.step_size
             count += 1
@@ -65,11 +70,13 @@ class TimeSeriesCVFactory:
         Generate a single blocked split where the dataset is divided into training and validation parts.
         """
         if self.train_size is None or self.val_size is None:
-            raise ValueError("For blocked splits, train_size and val_size must be provided.")
+            raise ValueError(
+                "For blocked splits, train_size and val_size must be provided."
+            )
         train_indices = list(range(0, self.train_size))
         val_indices = list(range(self.train_size, self.train_size + self.val_size))
         return [(train_indices, val_indices)]
-    
+
     def get_splits(self, max_splits=None):
         """
         Get the cross validation splits based on the chosen method.
@@ -81,4 +88,6 @@ class TimeSeriesCVFactory:
         elif self.method == "blocked":
             return self.blocked_splits()
         else:
-            raise ValueError(f"Cross-validation method '{self.method}' is not supported.")
+            raise ValueError(
+                f"Cross-validation method '{self.method}' is not supported."
+            )

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "apdtflow"  # This was missing, causing the error
-version = "0.1.17"
+version = "0.1.18"
 description = "APDTFlow: A modular forecasting framework for time series data"
 authors = [
     { name = "Yotam Barun", email = "yotambarun93@gmail.com" }
@@ -41,3 +41,4 @@ addopts = "--cov=apdtflow --cov-report=xml"
 
 [project.scripts]
 apdtflow = "apdtflow.cli:main"
+

@@ -1,6 +1,7 @@
 import torch
 from apdtflow.models.fusion import ProbScaleFusion
 
+
 def test_prob_scale_fusion():
     batch_size = 3
     num_scales = 4

@@ -1,14 +1,18 @@
 import torch.nn.functional as F
 import torch
 
+
 def mse(preds, targets):
     return torch.mean((preds - targets) ** 2).item()
+
 
 def mae(preds, targets):
     return torch.mean(torch.abs(preds - targets)).item()
 
+
 def rmse(preds, targets):
     return torch.sqrt(torch.mean((preds - targets) ** 2)).item()
+
 
 def mape(preds, targets):
     if torch.sum(targets) == 0:
@@ -21,12 +25,7 @@ def mape(preds, targets):
 
 
 class MetricFactory:
-    metrics_map = {
-        "MSE": mse,
-        "MAE": mae,
-        "RMSE": rmse,
-        "MAPE": mape
-    }
+    metrics_map = {"MSE": mse, "MAE": mae, "RMSE": rmse, "MAPE": mape}
 
     @staticmethod
     def get_metric(name):
@@ -34,7 +33,7 @@ class MetricFactory:
             return MetricFactory.metrics_map[name]
         else:
             raise ValueError(f"Metric {name} is not supported.")
-    
+
     @staticmethod
     def get_metrics(names):
         return {n: MetricFactory.get_metric(n) for n in names}

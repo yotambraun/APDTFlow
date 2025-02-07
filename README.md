@@ -273,8 +273,11 @@ print("Cross-Validation Splits:", splits)
 For comprehensive documentation—including user guides, API references, and example notebooks—please visit the docs directory. The examples provide step-by-step instructions for data preprocessing, model training, evaluation, and inference.
 
 [APDTFlow Documentation](https://github.com/yotambraun/APDTFlow/blob/main/docs/index.md)
+
 [Model Architectures Documentation](https://github.com/yotambraun/APDTFlow/blob/main/docs/models.md)
+
 [Experiment Results and Analysis](https://github.com/yotambraun/APDTFlow/blob/main/docs/experiment_results.md)
+
 [Configuration and YAML Files](https://github.com/yotambraun/APDTFlow/blob/main/apdtflow/config/config.yaml)
 
 ---

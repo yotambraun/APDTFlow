@@ -1,12 +1,13 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from .multi_scale_decomposer import ResidualMultiScaleDecomposer
 from .dynamics import HierarchicalNeuralDynamics, adaptive_hierarchical_ode_solver
+from apdtflow.evaluation.regression_evaluator import RegressionEvaluator
 from apdtflow.logger_util import get_logger
 from .fusion import ProbScaleFusion
 from .decoder import TimeAwareTransformerDecoder
 from .base_forecaster import BaseForecaster
-import torch.nn.functional as F
 
 logger = get_logger("evaluation.log")
 
@@ -33,7 +34,7 @@ class APDTFlow(BaseForecaster):
             latent_means.append(h_sol[:, -1, :])
             latent_logvars.append(logvar_sol[:, -1, :])
         fused_state = self.fusion(latent_means, latent_logvars)
-        hidden = fused_state.unsqueeze(0) 
+        hidden = fused_state.unsqueeze(0)
         outputs, out_logvars = self.decoder(hidden)
         return outputs, out_logvars
 
@@ -71,9 +72,11 @@ class APDTFlow(BaseForecaster):
             preds, pred_logvars = self(new_x, t_span)
         return preds, pred_logvars
 
-    def evaluate(self, test_loader, device):
+    def evaluate(self, test_loader, device, metrics=["MSE", "MAE"]):
         self.eval()
-        mse_total, mae_total, count = 0.0, 0.0, 0
+        evaluator = RegressionEvaluator(metrics)
+        total_metrics = {m: 0.0 for m in metrics}
+        total_samples = 0
         with torch.no_grad():
             for x_batch, y_batch in test_loader:
                 x_batch = x_batch.to(device)
@@ -83,14 +86,10 @@ class APDTFlow(BaseForecaster):
                 batch_size, _, T_in = x_batch.size()
                 t_span = torch.linspace(0, 1, steps=T_in, device=device)
                 preds, _ = self(x_batch, t_span)
-                # Adjust y_batch: (batch_size, 1, T_out) -> (batch_size, T_out)
-                y_true = y_batch.squeeze(1)
-                mse = ((preds.squeeze(-1) - y_true) ** 2).mean().item()
-                mae = (torch.abs(preds.squeeze(-1) - y_true)).mean().item()
-                mse_total += mse * batch_size
-                mae_total += mae * batch_size
-                count += batch_size
-        mse_avg = mse_total / count
-        mae_avg = mae_total / count
-        logger.info(f"Evaluation -> MSE: {mse_avg:.4f}, MAE: {mae_avg:.4f}")
-        return mse_avg, mae_avg
+                batch_results = evaluator.evaluate(preds, y_batch.transpose(1,2))
+                for m in metrics:
+                    total_metrics[m] += batch_results[m] * batch_size
+                total_samples += batch_size
+        avg_metrics = {m: total_metrics[m] / total_samples for m in metrics}
+        logger.info("Evaluation -> " + ", ".join([f"{m}: {avg_metrics[m]:.4f}" for m in metrics]))
+        return avg_metrics

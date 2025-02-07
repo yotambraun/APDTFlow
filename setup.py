@@ -7,7 +7,7 @@ with open(os.path.join(this_directory, "README.md"), encoding="utf-8") as fh:
 
 setup(
     name='apdtflow',
-    version='0.1.14',
+    version='0.1.17',
     packages=find_packages(),
     install_requires=[
         'torch',
@@ -39,5 +39,10 @@ setup(
         'Source': 'https://github.com/yotambraun/APDTFlow',
     },
     python_requires='>=3.10',
+    entry_points={
+        'console_scripts': [
+            'apdtflow=apdtflow.cli:main'
+        ],
+    },
 )
 

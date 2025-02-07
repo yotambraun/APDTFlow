@@ -1,5 +1,6 @@
 import torch
 from .base_forecaster import BaseForecaster
+from apdtflow.evaluation.regression_evaluator import RegressionEvaluator
 
 class EnsembleForecaster(BaseForecaster):
     def __init__(self, models, weights=None):
@@ -24,7 +25,7 @@ class EnsembleForecaster(BaseForecaster):
         for model in self.models:
             preds, _ = model.predict(new_x, forecast_horizon, device)
             predictions.append(preds)
-        predictions = torch.stack(predictions)  # e.g. shape: (num_models, batch_size, T_out, output_dim) or (num_models, batch_size, T_out)
+        predictions = torch.stack(predictions)
         if predictions.dim() == 4:
             weight_shape = (-1, 1, 1, 1)
         elif predictions.dim() == 3:
@@ -36,21 +37,20 @@ class EnsembleForecaster(BaseForecaster):
         ensemble_preds = torch.sum(predictions * weights, dim=0)
         return ensemble_preds, None
 
-
-
-    def evaluate(self, test_loader, device):
-        mse_total, mae_total, count = 0.0, 0.0, 0
+    def evaluate(self, test_loader, device, metrics=["MSE", "MAE", "RMSE", "MAPE"]):
+        self.eval()
+        evaluator = RegressionEvaluator(metrics)
+        total_metrics = {m: 0.0 for m in metrics}
+        total_samples = 0
         with torch.no_grad():
             for x_batch, y_batch in test_loader:
                 ensemble_preds, _ = self.predict(x_batch, None, device)
                 y_true = y_batch.squeeze(1)
-                mse = ((ensemble_preds.squeeze(-1) - y_true) ** 2).mean().item()
-                mae = (torch.abs(ensemble_preds.squeeze(-1) - y_true)).mean().item()
                 batch_size = x_batch.size(0)
-                mse_total += mse * batch_size
-                mae_total += mae * batch_size
-                count += batch_size
-        mse_avg = mse_total / count
-        mae_avg = mae_total / count
-        print(f"Ensemble Evaluation -> MSE: {mse_avg:.4f}, MAE: {mae_avg:.4f}")
-        return mse_avg, mae_avg
+                batch_results = evaluator.evaluate(ensemble_preds.squeeze(-1), y_true)
+                for m in metrics:
+                    total_metrics[m] += batch_results[m] * batch_size
+                total_samples += batch_size
+        avg_metrics = {m: total_metrics[m] / total_samples for m in metrics}
+        print("Ensemble Evaluation -> " + ", ".join([f"{m}: {avg_metrics[m]:.4f}" for m in metrics]))
+        return avg_metrics

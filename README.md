@@ -11,22 +11,13 @@ APDTFlow is a modern and extensible forecasting framework for time series data t
 
 ![APDTFlow Forecast](https://github.com/yotambraun/APDTFlow/blob/main/experiments/results_plots/APDTFlow_Forecast_Horizon_14_CV2.png)
 
-## Features
-
-- **Differentiable Programming with Neural ODEs:** Capture complex temporal dynamics with a hierarchical dynamics module.
-- **Transformer-based Decoding:** Use a time-aware Transformer decoder to effectively model time dependencies.
-- **Probabilistic Modeling:** Quantify uncertainty with variational updates and probabilistic fusion techniques.
-- **Modular Design:** Easily swap out or extend components (e.g. decomposers, decoders, dynamics) for custom forecasting solutions.
-- **Built-in Logging and TensorBoard Support:** Monitor training progress with professional logging and optional TensorBoard integration.
-- **Multiple Architectures:** Choose from APDTFlow, Transformer‑ and TCN‑based forecasters, or build ensembles.
-
 ## Experiment Results
 In our mega experiment we compared multiple forecasting models across different forecast horizons using 3-fold cross‑validation. For brevity, below we show two key plots:
 
 1. **Validation Loss Comparison:** A bar plot comparing the average validation losses of the models (APDTFlow, TransformerForecaster, TCNForecaster, and EnsembleForecaster) across forecast horizons.
 2. **Example Forecast (Horizon 7, CV Split 3):** A forecast plot for the APDTFlow model for a 7-step forecast from CV split 3.
 
-## 1. Validation Loss Comparison
+## Validation Loss Comparison
 
 The bar plot below summarizes the average validation losses (lower is better) for the different models across the forecast horizons (7, 10, and 30 time steps):
 
@@ -38,7 +29,7 @@ This plot shows that the APDTFlow model (and possibly the ensemble) generally ac
 **Discussion:**  
 The plot demonstrates that, overall, the APDTFlow model (and, in some cases, the ensemble) tend to achieve lower validation losses—particularly as the forecast horizon increases.
 
-## 2. Performance vs. Forecast Horizon
+## Performance vs. Forecast Horizon
 
 The following line plot illustrates how the performance (average validation loss) of each model changes with different forecast horizons. This visualization helps to assess which models maintain consistent performance as the forecast horizon increases.
 
@@ -47,7 +38,7 @@ The following line plot illustrates how the performance (average validation loss
 **Discussion:**  
 The line plot reveals the trend in model performance across forecast horizons. It helps us understand which models degrade gracefully (or even improve) as the forecast horizon lengthens.
 
-## 3. Example Forecast (Horizon 7, CV Split 3)
+## Example Forecast (Horizon 7, CV Split 3)
 
 Below is an example forecast produced by the APDTFlow model for a forecast horizon of 7 time steps on the third cross-validation split.
 
@@ -62,29 +53,43 @@ Below is an example forecast produced by the APDTFlow model for a forecast horiz
 
 *For a detailed explanation, more plots, and **additional analysis of these results**, please see our [Experiment Results and Analysis](docs/experiment_results.md) document.*
 
----
 
+## Table of Contents
 
-## Installation
+1. [Installation](#installation)
+2. [Quick Start](#quick-start)
+   - [Training](#training)
+   - [Inference](#inference)
+3. [Data Processing and Augmentation](#data-processing-and-augmentation)
+4. [Forecasting Approaches](#forecasting-approaches)
+   - [APDTFlow](#apdtflow)
+   - [TransformerForecaster](#transformerforecaster)
+   - [TCNForecaster](#tcnforecaster)
+   - [EnsembleForecaster](#ensembleforecaster)
+5. [Evaluation and Metrics](#evaluation-and-metrics)
+6. [Command-Line Interface (CLI)](#command-line-interface-cli)
+7. [Cross-Validation Strategies](#cross-validation-strategies)
+8. [Documentation and Examples](#documentation-and-examples)
+9. [License](#license)
 
-APDTFlow is published on [PyPI](https://pypi.org/project/apdtflow). Install it using `pip`:
+## 1. Installation
+
+APDTFlow is published on [PyPI](https://pypi.org/project/apdtflow). To install:
 
 ```bash
 pip install apdtflow
 ```
-
-Alternatively, to install from source in editable mode (for development):
+For development, clone the repository and install in editable mode:
 
 ```bash
-git clone https://github.com/yourusername/apdtflow_project.git
-cd apdtflow_project
+git clone https://github.com/yotambraun/APDTFlow.git
+cd APDTFlow
 pip install -e .
 ```
 
-## Quick Start
-Here is a brief example showing how to use APDTFlow for training and inference:
-
+## 2. Quick Start
 ### Training
+Below is an example script to train the APDTFlow model on your dataset:
 
 ```python
 import torch
@@ -92,31 +97,28 @@ from torch.utils.data import DataLoader
 from apdtflow.data import TimeSeriesWindowDataset
 from apdtflow.models.apdtflow import APDTFlow
 
-# Create dataset
 dataset = TimeSeriesWindowDataset(
-    csv_file="path/to/your/dataset.csv",
+    csv_file="path/to/dataset.csv",
     date_col="DATE",
     value_col="VALUE",
-    T_in=12,    # Input sequence length
-    T_out=3     # Forecast horizon (number of future time steps)
+    T_in=12,    
+    T_out=3     
 )
 
 train_loader = DataLoader(dataset, batch_size=16, shuffle=True)
 
-# Initialize the model
 model = APDTFlow(
-    num_scales=3,         # Number of scales to decompose the input signal
-    input_channels=1,     # Number of input channels (typically 1 for univariate time series)
-    filter_size=5,        # Filter size for the dynamic convolution (affects receptive field)
-    hidden_dim=16,        # Hidden dimension size for the dynamics module and decoder
-    output_dim=1,         # Output channels (typically 1 for univariate forecasts)
-    forecast_horizon=3    # Number of future time steps to forecast (should match T_out)
+    num_scales=3,
+    input_channels=1,
+    filter_size=5,
+    hidden_dim=16,
+    output_dim=1,
+    forecast_horizon=3
 )
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
-# Train the model
 model.train_model(
     train_loader=train_loader,
     num_epochs=15,
@@ -126,6 +128,7 @@ model.train_model(
 ```
 
 ### Inference
+Use the following example to run inference on new data:
 
 ```python
 import torch
@@ -133,9 +136,8 @@ from torch.utils.data import DataLoader
 from apdtflow.data import TimeSeriesWindowDataset
 from apdtflow.models.apdtflow import APDTFlow
 
-# Create test dataset
 test_dataset = TimeSeriesWindowDataset(
-    csv_file="path/to/your/dataset.csv",
+    csv_file="path/to/dataset.csv",
     date_col="DATE",
     value_col="VALUE",
     T_in=12,
@@ -143,7 +145,6 @@ test_dataset = TimeSeriesWindowDataset(
 )
 test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False)
 
-# Initialize the model and load the checkpoint
 model = APDTFlow(
     num_scales=3,
     input_channels=1,
@@ -155,15 +156,44 @@ model = APDTFlow(
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
-checkpoint_path = "path/to/your/checkpoint.pt"
+checkpoint_path = "path/to/checkpoint.pt"
 model.load_state_dict(torch.load(checkpoint_path, map_location=device))
 
-# Evaluate the model
-mse, mae = model.evaluate(test_loader, device)
-print(f"Test MSE: {mse:.4f}, Test MAE: {mae:.4f}")
+metrics = model.evaluate(test_loader, device, metrics=["MSE", "MAE", "RMSE", "MAPE"])
+print("Evaluation Metrics:", metrics)
 ```
 
-## Core Model Parameters Explained:
+## 3. Data Processing and Augmentation
+APDTFlow provides robust functions to process and augment your time series data. Key features include:
+* **Date Conversion:** Automatically converts date columns to **datetime** objects.
+* **Gap Filling:** Reindexes data to ensure a consistent time frequency.
+* **Missing Value Imputation:** Supports methods such as forward-fill, backward-fill, mean substitution, and interpolation.
+* **Feature Engineering:** Generates lag features and rolling statistics to enhance predictive performance.
+* **Data Augmentation:** Offers techniques like jittering, scaling, and time warping to improve model robustness.
+
+---
+
+## 4. Forecasting Approaches
+APDTFlow includes several advanced forecasting strategies:
+
+### APDTFlow
+The **APDTFlow** model integrates:
+- **Multi-Scale Decomposition:** Decomposes the input signal into multiple resolutions.
+- **Neural ODE Dynamics:** Models continuous latent state evolution using Neural ODEs.
+- **Probabilistic Fusion:** Merges latent representations while quantifying uncertainty.
+- **Transformer-Based Decoding:** Generates forecasts using a time-aware attention mechanism.
+Key parameters include **T_in**, **T_out**, **num_scales**, **filter_size**, **hidden_dim**, and **forecast_horizon**.
+
+### TransformerForecaster
+Leverages the Transformer architecture to capture long-range dependencies using self‑attention. This approach is ideal for complex temporal patterns where context from many time steps is relevant.
+
+### TCNForecaster
+Based on Temporal Convolutional Networks, the TCNForecaster uses dilated convolutions and residual connections to efficiently capture local and medium-range dependencies.
+
+### EnsembleForecaster
+Combines predictions from multiple forecasting models (such as APDTFlow, TransformerForecaster, and TCNForecaster) using aggregation strategies (e.g., weighted averaging) to improve overall forecast robustness and accuracy.
+
+#### Core Model Parameters Explained:
 For a comprehensive description of each model's architecture and additional details, please see the [Model Architectures Documentation](docs/models.md).
 When configuring APDTFlow, several parameters play key roles in how the model processes and forecasts time series data. Here’s what they mean:
 
@@ -174,66 +204,79 @@ When configuring APDTFlow, several parameters play key roles in how the model pr
 * **forecast_horizon:** This parameter is used within the model to indicate the number of future time steps that the decoder will produce. It should match T_out to ensure consistency between the training data and the model's output.
 * **hidden_dim:** The size of the hidden state in the dynamics module and decoder. This parameter controls the capacity of the model to learn complex representations. Increasing hidden_dim may improve the model’s performance, but at the cost of additional computational resources and potential overfitting if not tuned properly.
 
+---
 
-## Running Training and Inference from the Command Line
-Your commands already show how to run the training and inference scripts. For clarity, here’s an explanation of the commands you provided:
-### Training
-Run the training script with your dataset and hyperparameters:
+## 5. Evaluation and Metrics
+APDTFlow incorporates a flexible evaluation framework that supports several performance metrics including:
+- **Mean Squared Error (MSE)**
+- **Mean Absolute Error (MAE)**
+- **Root Mean Squared Error (RMSE)**
+- **Mean Absolute Percentage Error (MAPE)**
 
-```bash
-python experiments/scripts/train.py \
-  --csv_file "C:/Users/yotam/code_projects/APDTFlow/dataset_examples/Electric_Production.csv" \
-  --date_col "DATE" \
-  --value_col "IPG2211A2N" \
-  --T_in 12 \
-  --T_out 3 \
-  --model APDTFlow \
-  --num_scales 3 \
-  --filter_size 5 \
-  --hidden_dim 16 \
-  --batch_size 16 \
-  --learning_rate 0.001 \
-  --num_epochs 15 \
-  --checkpoint_dir "./checkpoints"
+These metrics are computed via a dedicated evaluator, which can be extended with additional metrics as needed.
+**Usage Example:**
+```python
+from apdtflow.evaluation.regression_evaluator import RegressionEvaluator
 
+evaluator = RegressionEvaluator(metrics=["MSE", "MAE", "RMSE", "MAPE"])
+results = evaluator.evaluate(predictions, targets)
+print("MSE:", results["MSE"], "MAE:", results["MAE"], "RMSE:", results["RMSE"], "MAPE:", results["MAPE"])
 ```
-This command does the following:
 
-* --csv_file: Specifies the path to your dataset.
-* --date_col and --value_col: Define the column names for dates and values.
-* --T_in and --T_out: Set the input sequence length and forecast horizon.
-* --model: Chooses the forecasting model (in this case, APDTFlow).
-* Other arguments: Set additional model parameters and training configurations.
-* --checkpoint_dir: Determines where to save the checkpoint after training.
+---
 
-### Inference
-Run the inference script using the trained checkpoint:
+## 6. Command-Line Interface (CLI)
+For ease of use, APDTFlow provides a command‑line interface that allows you to run training, evaluation, and inference directly from the terminal. The CLI accepts various parameters to configure the forecasting process without modifying the code.
+#### Available Commands:
+- **apdtflow train:** – Train a forecasting model.
+- **apdtflow infer:** – Run inference using a saved checkpoint.
 
+#### Example Usage:
 ```bash
-python experiments/scripts/infer.py \
-  --csv_file "C:/Users/yotam/code_projects/APDTFlow/dataset_examples/Electric_Production.csv" \
-  --date_col "DATE" \
-  --value_col "IPG2211A2N" \
-  --T_in 12 \
-  --T_out 3 \
-  --model APDTFlow \
-  --checkpoint_path "./checkpoints/APDTFlow_checkpoint.pt" \
-  --batch_size 16
+# Train a model
+apdtflow train --csv_file path/to/dataset.csv --date_col DATE --value_col VALUE --T_in 12 --T_out 3 --num_scales 3 --filter_size 5 --hidden_dim 16 --batch_size 16 --learning_rate 0.001 --num_epochs 15 --checkpoint_dir ./checkpoints
+
+# Run inference
+apdtflow infer --csv_file path/to/dataset.csv --date_col DATE --value_col VALUE --T_in 12 --T_out 3 --checkpoint_path ./checkpoints/APDTFlow_checkpoint.pt --batch_size 16
 ```
-This command:
 
-* Loads the dataset using the specified CSV file.
-* Loads the trained model from the checkpoint file (APDTFlow_checkpoint.pt).
-* Evaluates the model using the test data, printing metrics (e.g., MSE and MAE).
+---
 
-These examples can be demonstrated during a presentation or written in your documentation to show users how to work with the framework from the command line.
+## 7. Cross-Validation Strategies
+To ensure robust forecasting evaluation, APDTFlow includes a Cross-Validation Factory that supports:
+- **Rolling Splits:** Moving training and validation windows over time.
+- **Expanding Splits:** Increasing training window size while keeping validation size constant.
+- **Blocked Splits:** Dividing the dataset into contiguous blocks.
 
-## Documentation
-Full documentation is available in the [APDTFlow documentation](docs/index.md).
+#### Usage Example:
+```python
+from apdtflow.cv_factory import TimeSeriesCVFactory
+from torch.utils.data import Dataset
 
-## Configuration
-APDTFlow supports configuration via YAML files. A sample configuration file is available at [config.yaml](https://github.com/yotambraun/APDTFlow/blob/main/apdtflow/config/config.yaml).
- You can override these settings using command-line arguments when running the provided scripts (see the experiments/scripts/ directory).
+class SampleDataset(Dataset):
+    def __init__(self, length=100):
+        self.data = list(range(length))
+    def __len__(self):
+        return len(self.data)
+    def __getitem__(self, idx):
+        return self.data[idx]
 
-## License
-APDTFlow is licensed under the MIT License. See the [LICENSE](License) file for more details.
+dataset = SampleDataset()
+cv_factory = TimeSeriesCVFactory(dataset, method="rolling", train_size=40, val_size=10, step_size=10)
+splits = cv_factory.get_splits()
+print("Cross-Validation Splits:", splits)
+```
+
+---
+
+## 8. Documentation and Examples
+For comprehensive documentation—including user guides, API references, and example notebooks—please visit the docs directory. The examples provide step-by-step instructions for data preprocessing, model training, evaluation, and inference.
+[APDTFlow Documentation](https://github.com/yotambraun/APDTFlow/blob/main/docs/index.md)
+[Model Architectures Documentation](https://github.com/yotambraun/APDTFlow/blob/main/docs/models.md)
+[Experiment Results and Analysis](https://github.com/yotambraun/APDTFlow/blob/main/docs/experiment_results.md)
+[Configuration and YAML Files](https://github.com/yotambraun/APDTFlow/blob/main/apdtflow/config/config.yaml)
+
+---
+
+## 9. License
+APDTFlow is licensed under the MIT License. For more details, please refer to the [LICENSE](LICENSE) file.

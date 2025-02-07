@@ -27,3 +27,6 @@ recipe_to_update_pacakge.txt
 coverage.xml
 .coverage
 htmlcov/
+
+command_pytest.txt
+.coverage.yotambraun.*

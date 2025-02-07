@@ -1,18 +1,15 @@
-import abc
+from abc import ABC, abstractmethod
 import torch.nn as nn
 
-class BaseForecaster(nn.Module, abc.ABC):
-    @abc.abstractmethod
+class BaseForecaster(nn.Module, ABC):
+    @abstractmethod
     def train_model(self, train_loader, num_epochs, learning_rate, device):
-        """Train the forecasting model."""
         pass
 
-    @abc.abstractmethod
+    @abstractmethod
     def predict(self, new_x, forecast_horizon, device):
-        """Predict future values given an input sequence."""
         pass
 
-    @abc.abstractmethod
+    @abstractmethod
     def evaluate(self, test_loader, device):
-        """Evaluate the model on test data."""
         pass

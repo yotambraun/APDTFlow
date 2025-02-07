@@ -9,7 +9,7 @@ def test_metric_factory_valid():
     mae = MetricFactory.get_metric("MAE")
     rmse = MetricFactory.get_metric("RMSE")
     mape = MetricFactory.get_metric("MAPE")
-    assert callable(mse) and callable(mae)
+    assert callable(mse) and callable(mae) and callable(rmse) and callable(mape)
 
 
 def test_metric_factory_invalid():

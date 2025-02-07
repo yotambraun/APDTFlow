@@ -8,28 +8,31 @@ import torch
 
 def print_banner():
     banner = r"""
-    ────────────────────────────────────────────────
-         🚀 Welcome to APDTFlow! 🚀
+────────────────────────────────────────────────
+     🚀 Welcome to APDTFlow! 🚀
+
+    Your go-to framework for flexible,
+    modular, and powerful time series forecasting.
     
-        Your go-to framework for flexible, 
-        modular, and powerful time series forecasting.  
-        
-        Built for pros. Designed for performance. ⚡
+    Built for pros. Designed for performance. ⚡
     
-        Let's get forecasting! 📈
-    ────────────────────────────────────────────────
-    """
+    Let's get forecasting! 📈
+────────────────────────────────────────────────
+"""
     print(banner)
 
 
 def main():
     print_banner()
     parser = argparse.ArgumentParser(
-        description="APDTFlow: A forecasting framework for time series data"
+        description=(
+            "APDTFlow: A flexible forecasting framework for "
+            "modular and powerful time series forecasting."
+        )
     )
     subparsers = parser.add_subparsers(dest="command")
     train_parser = subparsers.add_parser("train", help="Train a forecasting model.")
-    train_parser.add_argument("--csv_file", required=True)
+    train_parser.add_argument("--csv_file", required=True, help="Path to the CSV file.")
     train_parser.add_argument("--date_col", default="DATE")
     train_parser.add_argument("--value_col", required=True)
     train_parser.add_argument("--T_in", type=int, default=12)
@@ -72,8 +75,6 @@ def main():
             model, train_loader, args.num_epochs, args.learning_rate, device
         )
     elif args.command == "infer":
-        from apdtflow.inference import infer_forecaster
-
         dataset = TimeSeriesWindowDataset(
             args.csv_file, args.date_col, args.value_col, args.T_in, args.T_out
         )

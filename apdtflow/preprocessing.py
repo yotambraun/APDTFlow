@@ -221,30 +221,3 @@ class TimeSeriesScaler:
             np.ndarray: Data in original scale.
         """
         return self.scaler.inverse_transform(data)
-
-
-# if __name__ == "__main__":
-#     file_path = "raw_timeseries.csv"
-#     timestamp_col = "Date"
-#     value_col = "Value"
-#     df = pd.read_csv(file_path)
-#     df = convert_to_datetime(df, timestamp_col)
-#     df_filled = fill_time_gaps(df, timestamp_col, freq="D")
-#     df_filled = df_filled.sort_values(timestamp_col)
-#     df_filled[value_col] = impute_missing_values(df_filled[value_col], method="linear")
-#     detrended = detrend_series(df_filled[value_col], method="difference", order=1)
-#     decomposition = decompose_series(df_filled[value_col], model="additive", period=7)
-#     decomposition.plot()
-#     df_lags = generate_lag_features(df_filled[value_col], lags=[1, 2, 3])
-#     df_roll = generate_rolling_features(df_filled[value_col], windows=[3, 7, 14])
-
-#     print("Lag features sample:")
-#     print(df_lags.head())
-
-#     print("Rolling features sample:")
-#     print(df_roll.head())
-#     scaler = TimeSeriesScaler(scaler_type="robust")
-#     data = df_filled[value_col].values.reshape(-1, 1)
-#     scaled_data = scaler.fit_transform(data)
-#     print("Scaled data sample:")
-#     print(scaled_data[:5])

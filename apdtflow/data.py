@@ -21,15 +21,15 @@ class TimeSeriesWindowDataset(Dataset):
         self.samples = []
         total_length = T_in + T_out
         for i in range(len(self.series) - total_length + 1):
-            self.samples.append(self.series[i : i + total_length])
+            self.samples.append(self.series[i:i+total_length])
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
         sample = self.samples[idx]
-        x = torch.tensor(sample[: self.T_in], dtype=torch.float32).unsqueeze(0)
-        y = torch.tensor(sample[self.T_in :], dtype=torch.float32).unsqueeze(0)
+        x = torch.tensor(sample[:self.T_in], dtype=torch.float32).unsqueeze(0)
+        y = torch.tensor(sample[self.T_in:], dtype=torch.float32).unsqueeze(0)
         if self.transform:
             x = self.transform(x)
         return x, y

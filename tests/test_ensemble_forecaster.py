@@ -8,7 +8,6 @@ class DummyForecaster(BaseForecaster):
         super(DummyForecaster, self).__init__()
 
     def forward(self, x, t_span=None):
-        batch_size = x.size(0)
         return x[:, :, :3].transpose(1, 2), None
 
     def train_model(self, *args, **kwargs):

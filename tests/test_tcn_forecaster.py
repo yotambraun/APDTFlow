@@ -1,5 +1,4 @@
 import torch
-import pytest
 from apdtflow.models.tcn_forecaster import TCNForecaster
 
 

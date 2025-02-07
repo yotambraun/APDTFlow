@@ -1,6 +1,4 @@
-import os
 import torch
-
 
 def save_checkpoint(model, optimizer, epoch, filename):
     torch.save(

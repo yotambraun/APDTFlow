@@ -1,10 +1,8 @@
-import os
 import pytest
 import torch
 from torch.utils.data import DataLoader, Subset
 import pandas as pd
 import numpy as np
-
 from apdtflow.data import TimeSeriesWindowDataset
 from apdtflow.models.apdtflow import APDTFlow
 
@@ -62,7 +60,6 @@ def train_on_split(model, train_loader, val_loader, num_epochs, learning_rate, d
             loss.backward()
             optimizer.step()
             epoch_loss += loss.item() * batch_size
-        avg_loss = epoch_loss / len(train_loader.dataset)
     return evaluate_model(model, val_loader, device)
 
 
@@ -92,7 +89,6 @@ def dataset(dummy_csv):
 @pytest.fixture
 def dataloaders(dataset):
     train_size = int(0.8 * len(dataset))
-    val_size = len(dataset) - train_size
     train_subset = Subset(dataset, list(range(train_size)))
     val_subset = Subset(dataset, list(range(train_size, len(dataset))))
     train_loader = DataLoader(train_subset, batch_size=4, shuffle=True)

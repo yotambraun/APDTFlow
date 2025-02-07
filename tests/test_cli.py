@@ -1,7 +1,5 @@
 import sys
 import subprocess
-import pytest
-
 
 def test_cli_help():
     result = subprocess.run(

@@ -1,5 +1,4 @@
 import torch
-import numpy as np
 from apdtflow.augmentation import jitter, scaling, time_warp
 
 

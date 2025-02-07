@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-import pytest
 from apdtflow.preprocessing import (
     convert_to_datetime,
     fill_time_gaps,

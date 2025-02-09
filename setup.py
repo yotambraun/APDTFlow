@@ -7,7 +7,7 @@ with open(os.path.join(this_directory, "README.md"), encoding="utf-8") as fh:
 
 setup(
     name="apdtflow",
-    version="0.1.21",
+    version="0.1.22",
     packages=find_packages(),
     install_requires=[
         "torch",

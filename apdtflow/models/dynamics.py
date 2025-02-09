@@ -6,6 +6,8 @@ from torchdiffeq import odeint_adjoint
 class HierarchicalNeuralDynamics(nn.Module):
     def __init__(self, hidden_dim, input_dim):
         super(HierarchicalNeuralDynamics, self).__init__()
+        self.hidden_dim = hidden_dim  
+        
         self.global_net = nn.Sequential(
             nn.Linear(hidden_dim + input_dim + 1, 64),
             nn.ReLU(),
@@ -32,8 +34,18 @@ class HierarchicalNeuralDynamics(nn.Module):
 
 def adaptive_hierarchical_ode_solver(dynamics, h0, logvar0, t_span, x_scale_sequence):
     """
-    Solves the ODE for hierarchical dynamics.
-    Currently only uses the 'global' level.
+    Solves the ODE for hierarchical dynamics using odeint_adjoint.
+    Currently, only the 'global' level is used.
+    
+    Args:
+        dynamics: An instance of HierarchicalNeuralDynamics.
+        h0: Initial hidden state tensor.
+        logvar0: Initial log-variance tensor.
+        t_span: 1D tensor of time points for integration.
+        x_scale_sequence: A tensor containing the scale information for each time point.
+    
+    Returns:
+        A tuple (h_sol, logvar_sol) with the integrated solutions.
     """
 
     class ODEFunc(nn.Module):

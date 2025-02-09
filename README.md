@@ -158,7 +158,8 @@ model = APDTFlow(
     filter_size=5,
     hidden_dim=16,
     output_dim=1,
-    forecast_horizon=3
+    forecast_horizon=3,
+    use_embedding=True
 )
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
@@ -240,10 +241,13 @@ For ease of use, APDTFlow provides a command‑line interface that allows you to
 
 #### Example Usage:
 ```bash
-# Train a model
+# Train a model (using the learnable embedding, which is enabled by default)
 apdtflow train --csv_file path/to/dataset.csv --date_col DATE --value_col VALUE --T_in 12 --T_out 3 --num_scales 3 --filter_size 5 --hidden_dim 16 --batch_size 16 --learning_rate 0.001 --num_epochs 15 --checkpoint_dir ./checkpoints
 
-# Run inference
+# Alternatively, disable the learnable embedding by adding the flag:
+apdtflow train --csv_file path/to/dataset.csv --date_col DATE --value_col VALUE --T_in 12 --T_out 3 --num_scales 3 --filter_size 5 --hidden_dim 16 --batch_size 16 --learning_rate 0.001 --num_epochs 15 --checkpoint_dir ./checkpoints --no_embedding
+
+# Run inference (ensure that the embedding setting matches what was used during training)
 apdtflow infer --csv_file path/to/dataset.csv --date_col DATE --value_col VALUE --T_in 12 --T_out 3 --checkpoint_path ./checkpoints/APDTFlow_checkpoint.pt --batch_size 16
 ```
 

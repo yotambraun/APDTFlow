@@ -12,17 +12,36 @@ logger = get_logger("evaluation.log")
 
 class APDTFlow(nn.Module):
     def __init__(self, num_scales, input_channels, filter_size, hidden_dim, output_dim, forecast_horizon, use_embedding=True):
+        """
+        Initializes the APDTFlow model.
+        
+        Args:
+          num_scales: Number of scales for multi-scale decomposition.
+          input_channels: Number of input channels (expected to be 1 after embedding/projection).
+          filter_size: Convolution filter size for the decomposer.
+          hidden_dim: Dimensionality for the neural ODE dynamics and embedding.
+          output_dim: Output dimension of the forecast (e.g., 1).
+          forecast_horizon: Number of future time steps to forecast.
+          use_embedding: If True, apply the learnable TimeSeriesEmbedding to the input.
+        """
         super(APDTFlow, self).__init__()
         self.use_embedding = use_embedding
         if self.use_embedding:
             self.embedding = TimeSeriesEmbedding(embed_dim=hidden_dim, calendar_dim=None, dropout=0.1)
             self.input_proj = nn.Linear(hidden_dim, 1)
-        self.decomposer = ResidualMultiScaleDecomposer(num_scales, in_channels=1, filter_size=filter_size)
+        self.decomposer = ResidualMultiScaleDecomposer(num_scales, input_channels=1, filter_size=filter_size)
         self.dynamics_module = HierarchicalNeuralDynamics(hidden_dim=hidden_dim, input_dim=1)
         self.fusion = ProbScaleFusion(hidden_dim, num_scales)
         self.decoder = TimeAwareTransformerDecoder(hidden_dim, output_dim, forecast_horizon)
 
     def forward(self, x, t_span):
+        """
+        Args:
+          x: Input tensor of shape (batch, 1, T_in).
+          t_span: 1D tensor of time indices of length T_in (normalized to [0,1]).
+        Returns:
+          Tuple (outputs, out_logvars) each of shape (batch, forecast_horizon, output_dim).
+        """
         batch_size, _, T_in = x.size()
         if self.use_embedding:
             time_indices = t_span.unsqueeze(0).repeat(batch_size, 1).unsqueeze(-1)
@@ -30,6 +49,7 @@ class APDTFlow(nn.Module):
             projected = self.input_proj(embedded)
             x = projected.transpose(1, 2)
         scale_components = self.decomposer(x)
+        
         latent_means = []
         latent_logvars = []
         for comp in scale_components:
@@ -39,6 +59,7 @@ class APDTFlow(nn.Module):
             h_sol, logvar_sol = adaptive_hierarchical_ode_solver(self.dynamics_module, h0, logvar0, t_span, comp_t)
             latent_means.append(h_sol[:, -1, :])
             latent_logvars.append(logvar_sol[:, -1, :])
+        
         fused_state = self.fusion(latent_means, latent_logvars)
         hidden = fused_state.unsqueeze(0)
         outputs, out_logvars = self.decoder(hidden)

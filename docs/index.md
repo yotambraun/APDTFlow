@@ -16,6 +16,10 @@ Welcome to the APDTFlow forecasting framework documentation. This guide provides
 5. [Module Details](#module-details)
     - [Data & Augmentation](#data--augmentation)
     - [Models](#models)
+        - [APDTFlow with Learnable Time Series Embedding](#apdtflow-with-learnable-time-series-embedding)
+        - [TransformerForecaster](#transformerforecaster)
+        - [TCNForecaster](#tcnforecaster)
+        - [EnsembleForecaster](#ensembleforecaster)
     - [Training & Inference Scripts](#training--inference-scripts)
     - [Utilities](#utilities)
 6. [Examples and Tutorials](#examples-and-tutorials)
@@ -39,22 +43,23 @@ APDTFlow is a modular forecasting framework for time series data that combines a
 APDTFlow’s architecture is organized into several key components:
 
 - **Data Handling & Augmentation:**  
-  This module provides classes and functions to load time series data from CSV files, apply data transformations (such as jittering, scaling, and time warping), and generate sliding-window datasets for training and evaluation.
+  Functions and classes to load time series data from CSV files, apply transformations (e.g., jitter, scaling, time warping), and construct sliding-window datasets.
 
 - **Model Suite:**  
   The framework includes several forecasting models:
-  - **APDTFlow Model:** Combines multi-scale decomposition, neural ODE dynamics, probabilistic fusion, and a time-aware Transformer decoder.
-  - **TransformerForecaster:** Leverages Transformer architecture for capturing long-range dependencies.
+  - **APDTFlow Model:** Now enhanced with a learnable time series embedding module that processes raw temporal inputs using gated residual networks. This embedding enriches the signal before multi-scale decomposition, neural ODE dynamics, probabilistic fusion, and a time-aware Transformer decoder.
+  - **TransformerForecaster:** Leverages Transformer architecture to capture long-range dependencies.
   - **TCNForecaster:** Uses Temporal Convolutional Networks for fast and efficient forecasting.
-  - **EnsembleForecaster:** Combines multiple models to improve prediction robustness.
+  - **EnsembleForecaster:** Combines multiple models to improve robustness.
 
 - **Training & Inference:**  
-  Ready-to-use scripts are provided to train models and run inference. These scripts support configuration via command-line arguments or YAML configuration files.
+  Ready-to-use scripts support model training and inference via command-line arguments and YAML configuration files.
 
 - **Utilities & Logging:**  
-  Helper functions for checkpointing, logging, and evaluation are included to streamline model development and debugging.
+  Helper functions for checkpointing, logging, and evaluation streamline development and debugging.
 
 ---
+
 
 ## 3. Installation and Setup
 
@@ -104,18 +109,43 @@ The APDTFlow model is configurable via several key parameters:
 * **filter_size:** This parameter is used in the convolutional component (or dynamic convolution) within the model’s decomposer module. It defines the size of the convolutional filter applied to the input signal, thereby affecting the receptive field. A larger filter size allows the model to consider a broader context in the time series but may smooth out finer details.
 * **forecast_horizon:** This parameter is used within the model to indicate the number of future time steps that the decoder will produce. It should match T_out to ensure consistency between the training data and the model's output.
 * **hidden_dim:** The size of the hidden state in the dynamics module and decoder. This parameter controls the capacity of the model to learn complex representations. Increasing hidden_dim may improve the model’s performance, but at the cost of additional computational resources and potential overfitting if not tuned properly.
+* **use_embedding:** A boolean flag to enable the learnable time series embedding.
+* **embed_dim:** Dimension of the learned time series embedding (typically set equal to hidden_dim).
 
 Example configuration:
 ```python
 from apdtflow.models.apdtflow import APDTFlow
+
 model = APDTFlow(
     num_scales=3,
     input_channels=1,
     filter_size=5,
     hidden_dim=16,
     output_dim=1,
-    forecast_horizon=3
+    forecast_horizon=3,
+    use_embedding=True
 )
+```
+
+Or via the YAML configuration file (apdtflow/config/config.yaml):
+```yaml
+model: "APDTFlow"
+csv_file: "dataset_examples/Electric_Production.csv"
+date_col: "DATE"
+value_col: "IPG2211A2N"
+T_in: 12
+T_out: 3
+num_scales: 3
+filter_size: 5
+hidden_dim: 16
+output_dim: 1
+forecast_horizon: 3
+batch_size: 16
+learning_rate: 0.001
+num_epochs: 15
+checkpoint_dir: "checkpoints"
+use_embedding: true
+embed_dim: 16
 ```
 
 ### Training and Inference
@@ -168,7 +198,12 @@ Below is an example forecast produced by APDTFlow:
 
 The framework includes multiple forecasting models. For a detailed explanation of each model's architecture, parameters, and use cases, please refer to the [Model Architectures](models.md) documentation.
 
-- **APDTFlow:** Integrates multi-scale decomposition, neural ODEs, probabilistic fusion, and a Transformer-based decoder.
+- **APDTFlow:** Integrates multi-scale decomposition, neural ODEs, probabilistic fusion, and a Transformer-based decoder and now includes a learnable time series embedding.
+The APDTFlow model has been enhanced with a learnable TimeSeriesEmbedding module. This module uses gated residual networks (GRNs) to transform:  
+    - Raw (normalized) time indices,
+    - A periodic component (learned instead of fixed sinusoidal functions), and
+    - Optionally, calendar features.
+  These embeddings are projected back to a single channel and then processed by the multi-scale decomposer, neural ODE dynamics, probabilistic fusion, and a time-aware Transformer decoder.
 - **TransformerForecaster:** Leverages the Transformer architecture for capturing long-range dependencies.
 - **TCNForecaster:** Uses Temporal Convolutional Networks for efficient forecasting.
 - **EnsembleForecaster:** Combines multiple models to improve robustness.

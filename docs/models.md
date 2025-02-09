@@ -45,6 +45,14 @@ The **APDTFlow** model is the flagship architecture in the framework. It integra
 - **`filter_size`:** Size of the convolutional filter in the decomposition module (affects the receptive field).
 - **`hidden_dim`:** Dimensionality of the hidden state in both the dynamics module and the decoder.
 - **`forecast_horizon`:** Number of future steps to predict (should be equal to `T_out`).
+- **TimeSeriesEmbedding Module:**  
+  - **GatedResidualNetwork (GRN) Blocks:** Nonlinear transformations with gating for both raw time and periodic components.  
+  - **(Optional) Calendar Feature Processing:** You can provide additional calendar features (such as day-of-week or month) to further improve the embedding.
+  - **Fusion:** The embeddings from the raw and periodic inputs are concatenated and passed through a linear layer to produce an embedding of dimension `embed_dim`.
+
+- **Integration:**  
+  When `use_embedding` is enabled in the configuration, the model first transforms the input time index (generated from `t_span`) into a rich embedding. This embedding is then projected to a single channel and fed into the Residual Multi‑Scale Decomposer. The rest of the APDTFlow pipeline (neural ODE dynamics, probabilistic fusion, and the time‑aware transformer decoder) remains unchanged.
+
 
 ### Use Cases
 
@@ -162,6 +170,8 @@ EnsembleForecaster is particularly beneficial when:
 | **`filter_size`**| Convolutional filter size in the decomposition or convolutional layers.             | 3–7 typically                |
 | **`hidden_dim`**| Size of hidden states in dynamics modules or Transformer layers.                     | 16–128 (depending on complexity) |
 | **`forecast_horizon`**| Must equal `T_out`, specifies the output length of the forecast.              | Same as T_out                |
+| `embed_dim`     | Dimension of the learned time series embedding (should match `hidden_dim`).              |
+| `use_embedding` | Flag to enable the learnable TimeSeriesEmbedding module.                                 |
 
 ---
 

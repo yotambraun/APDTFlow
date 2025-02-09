@@ -90,6 +90,15 @@ git clone https://github.com/yotambraun/APDTFlow.git
 cd APDTFlow
 pip install -e .
 ```
+## New Features in This Release
+
+- **Learnable Time Series Embedding:**  
+  APDTFlow now includes a `TimeSeriesEmbedding` module that learns to encode temporal information using gated residual networks. This module processes both raw time indices and periodic signals (and optionally calendar features) to produce a rich embedding that improves the subsequent forecasting performance.
+
+- **New Configuration Options:**  
+  In `apdtflow/config/config.yaml`, you can now specify:
+  - `use_embedding`: Set to `true` to enable the new embedding.
+  - `embed_dim`: The embedding dimension (recommended to match `hidden_dim`).
 
 ## 2. Quick Start
 ### Training
@@ -101,14 +110,8 @@ from torch.utils.data import DataLoader
 from apdtflow.data import TimeSeriesWindowDataset
 from apdtflow.models.apdtflow import APDTFlow
 
-dataset = TimeSeriesWindowDataset(
-    csv_file="path/to/dataset.csv",
-    date_col="DATE",
-    value_col="VALUE",
-    T_in=12,    
-    T_out=3     
-)
-
+csv_file = "dataset_examples/Electric_Production.csv"
+dataset = TimeSeriesWindowDataset(csv_file, date_col="DATE", value_col="IPG2211A2N", T_in=12, T_out=3)
 train_loader = DataLoader(dataset, batch_size=16, shuffle=True)
 
 model = APDTFlow(
@@ -117,9 +120,9 @@ model = APDTFlow(
     filter_size=5,
     hidden_dim=16,
     output_dim=1,
-    forecast_horizon=3
+    forecast_horizon=3,
+    use_embedding=True
 )
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 

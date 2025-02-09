@@ -11,3 +11,5 @@ batch_size: 16
 learning_rate: 0.001
 num_epochs: 15
 checkpoint_dir: "checkpoints"
+use_embedding: true
+embed_dim: 16 

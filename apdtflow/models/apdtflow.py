@@ -1,53 +1,65 @@
 import torch
+import torch.nn as nn
+from .embedding import TimeSeriesEmbedding
 from .multi_scale_decomposer import ResidualMultiScaleDecomposer
 from .dynamics import HierarchicalNeuralDynamics, adaptive_hierarchical_ode_solver
 from apdtflow.evaluation.regression_evaluator import RegressionEvaluator
 from apdtflow.logger_util import get_logger
 from .fusion import ProbScaleFusion
 from .decoder import TimeAwareTransformerDecoder
-from .base_forecaster import BaseForecaster
 
 logger = get_logger("evaluation.log")
 
-
-class APDTFlow(BaseForecaster):
-    def __init__(
-        self,
-        num_scales,
-        input_channels,
-        filter_size,
-        hidden_dim,
-        output_dim,
-        forecast_horizon,
-    ):
+class APDTFlow(nn.Module):
+    def __init__(self, num_scales, input_channels, filter_size, hidden_dim, output_dim, forecast_horizon, use_embedding=True):
+        """
+        Initializes the APDTFlow model.
+        
+        Args:
+          num_scales: Number of scales for multi-scale decomposition.
+          input_channels: Number of input channels (expected to be 1 after embedding/projection).
+          filter_size: Convolution filter size for the decomposer.
+          hidden_dim: Dimensionality for the neural ODE dynamics and embedding.
+          output_dim: Output dimension of the forecast (e.g., 1).
+          forecast_horizon: Number of future time steps to forecast.
+          use_embedding: If True, apply the learnable TimeSeriesEmbedding to the input.
+        """
         super(APDTFlow, self).__init__()
-        self.hidden_dim = hidden_dim
-        self.decomposer = ResidualMultiScaleDecomposer(
-            num_scales, input_channels, filter_size
-        )
-        self.num_scales = num_scales
-        self.dynamics_module = HierarchicalNeuralDynamics(
-            hidden_dim=hidden_dim, input_dim=1
-        )
+        self.use_embedding = use_embedding
+        if self.use_embedding:
+            self.embedding = TimeSeriesEmbedding(embed_dim=hidden_dim, calendar_dim=None, dropout=0.1)
+            self.input_proj = nn.Linear(hidden_dim, 1)
+        self.decomposer = ResidualMultiScaleDecomposer(num_scales, in_channels=1, filter_size=filter_size)
+        self.dynamics_module = HierarchicalNeuralDynamics(hidden_dim=hidden_dim, input_dim=1)
         self.fusion = ProbScaleFusion(hidden_dim, num_scales)
-        self.decoder = TimeAwareTransformerDecoder(
-            hidden_dim, output_dim, forecast_horizon
-        )
+        self.decoder = TimeAwareTransformerDecoder(hidden_dim, output_dim, forecast_horizon)
 
     def forward(self, x, t_span):
+        """
+        Args:
+          x: Input tensor of shape (batch, 1, T_in).
+          t_span: 1D tensor of time indices of length T_in (normalized to [0, 1]).
+        Returns:
+          Tuple (outputs, out_logvars) each of shape (batch, forecast_horizon, output_dim).
+        """
+        batch_size, _, T_in = x.size()
+        if self.use_embedding:
+            time_indices = t_span.unsqueeze(0).repeat(batch_size, 1).unsqueeze(-1)
+            embedded = self.embedding(time_indices, time_indices)
+            projected = self.input_proj(embedded)
+            x = projected.transpose(1, 2)
         scale_components = self.decomposer(x)
+        
         latent_means = []
         latent_logvars = []
-        batch_size, _, T_in = scale_components[0].size()
-        for i in range(self.num_scales):
-            x_scale_seq = scale_components[i].squeeze(1).unsqueeze(-1)
-            h0 = torch.zeros(batch_size, self.hidden_dim, device=x.device)
-            logvar0 = torch.zeros(batch_size, self.hidden_dim, device=x.device)
-            h_sol, logvar_sol = adaptive_hierarchical_ode_solver(
-                self.dynamics_module, h0, logvar0, t_span, x_scale_seq
-            )
+        for comp in scale_components:
+            comp_t = comp.transpose(1, 2)
+            h0 = torch.zeros(batch_size, self.dynamics_module.hidden_dim, device=x.device)
+            logvar0 = torch.zeros(batch_size, self.dynamics_module.hidden_dim, device=x.device)
+            h_sol, logvar_sol = adaptive_hierarchical_ode_solver(self.dynamics_module, h0, logvar0, t_span, comp_t)
             latent_means.append(h_sol[:, -1, :])
             latent_logvars.append(logvar_sol[:, -1, :])
+        
         fused_state = self.fusion(latent_means, latent_logvars)
         hidden = fused_state.unsqueeze(0)
         outputs, out_logvars = self.decoder(hidden)
@@ -69,15 +81,11 @@ class APDTFlow(BaseForecaster):
                 optimizer.zero_grad()
                 preds, pred_logvars = self(x_batch, t_span)
                 mse = (preds - y_batch.transpose(1, 2)) ** 2
-                loss = torch.mean(
-                    0.5 * (mse / (pred_logvars.exp() + 1e-6)) + 0.5 * pred_logvars
-                )
+                loss = torch.mean(0.5 * (mse / (pred_logvars.exp() + 1e-6)) + 0.5 * pred_logvars)
                 loss.backward()
                 optimizer.step()
                 epoch_loss += loss.item() * batch_size
-            print(
-                f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss/len(train_loader.dataset):.4f}"
-            )
+            print(f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss/len(train_loader.dataset):.4f}")
         return
 
     def predict(self, new_x, forecast_horizon, device):
@@ -110,8 +118,5 @@ class APDTFlow(BaseForecaster):
                     total_metrics[m] += batch_results[m] * batch_size
                 total_samples += batch_size
         avg_metrics = {m: total_metrics[m] / total_samples for m in metrics}
-        logger.info(
-            "Evaluation -> "
-            + ", ".join([f"{m}: {avg_metrics[m]:.4f}" for m in metrics])
-        )
+        logger.info("Evaluation -> " + ", ".join([f"{m}: {avg_metrics[m]:.4f}" for m in metrics]))
         return avg_metrics

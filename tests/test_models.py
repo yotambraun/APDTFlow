@@ -6,7 +6,6 @@ def test_apdtflow_forward():
     T_in = 30
     dummy_input = torch.randn(batch_size, 1, T_in)
     t_span = torch.linspace(0, 1, steps=T_in)
-    
     model = APDTFlow(
         num_scales=3,
         input_channels=1,

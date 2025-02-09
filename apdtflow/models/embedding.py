@@ -1,13 +1,8 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 class GatedResidualNetwork(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim=None, dropout=0.1, context_dim=None):
-        """
-        A GRN that nonlinearly transforms its input (optionally with context)
-        and uses a gating mechanism with a residual connection.
-        """
         super(GatedResidualNetwork, self).__init__()
         self.output_dim = output_dim or input_dim
         self.context_fc = nn.Linear(context_dim, hidden_dim) if context_dim is not None else None
@@ -36,15 +31,9 @@ class TimeSeriesEmbedding(nn.Module):
     def __init__(self, embed_dim, calendar_dim=None, dropout=0.1):
         """
         A learnable time series embedding module that processes:
-          - a raw time index (e.g. normalized timestamp)
-          - a periodic component (learned via GRN)
-          - optionally, additional calendar features
-        The outputs are fused to produce an embedding of size embed_dim.
-        
-        Args:
-            embed_dim (int): The desired embedding dimension.
-            calendar_dim (int, optional): The number of calendar features provided per time step.
-            dropout (float): Dropout rate to use in GRN blocks.
+          - a raw time index (normalized)
+          - a periodic component
+          - optionally, calendar features.
         """
         super(TimeSeriesEmbedding, self).__init__()
         self.embed_dim = embed_dim
@@ -58,14 +47,6 @@ class TimeSeriesEmbedding(nn.Module):
             self.fc = nn.Linear(embed_dim * 2, embed_dim)
 
     def forward(self, time_input, periodic_input, calendar_features=None):
-        """
-        Args:
-          time_input: Tensor of shape (batch, T, 1) representing normalized time indices.
-          periodic_input: Tensor of shape (batch, T, 1) for the periodic component.
-          calendar_features: Optional tensor of shape (batch, T, calendar_dim).
-        Returns:
-          Tensor of shape (batch, T, embed_dim) containing the learned embeddings.
-        """
         raw_emb = self.raw_grn(time_input)
         periodic_emb = self.periodic_grn(periodic_input)
         if self.calendar_grn is not None and calendar_features is not None:

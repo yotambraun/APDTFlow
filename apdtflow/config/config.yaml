@@ -1,4 +1,4 @@
-model: "APDTFlow" 
+model: "APDTFlow"
 csv_file: "dataset_examples/Electric_Production.csv"
 date_col: "DATE"
 value_col: "IPG2211A2N"
@@ -7,9 +7,11 @@ T_out: 3
 num_scales: 3
 filter_size: 5
 hidden_dim: 16
+output_dim: 1
+forecast_horizon: 3
 batch_size: 16
 learning_rate: 0.001
 num_epochs: 15
 checkpoint_dir: "checkpoints"
 use_embedding: true
-embed_dim: 16 
+embed_dim: 16

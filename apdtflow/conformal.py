@@ -15,7 +15,7 @@ References:
 """
 import numpy as np
 import torch
-from typing import Optional, Tuple, Callable
+from typing import Optional, Tuple, Callable, overload, Literal, Union
 
 
 class SplitConformalPredictor:
@@ -93,11 +93,25 @@ class SplitConformalPredictor:
         print(f"✓ Calibrated with {n} samples")
         print(f"  Quantile at {1-self.alpha:.1%} level: {self.quantile:.4f}")
 
+    @overload
+    def predict(
+        self,
+        X_test: np.ndarray,
+        return_scores: Literal[False] = False
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]: ...
+
+    @overload
+    def predict(
+        self,
+        X_test: np.ndarray,
+        return_scores: Literal[True]
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: ...
+
     def predict(
         self,
         X_test: np.ndarray,
         return_scores: bool = False
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    ) -> Union[Tuple[np.ndarray, np.ndarray, np.ndarray], Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
         """
         Predict with conformal intervals.
 
@@ -215,11 +229,25 @@ class AdaptiveConformalPredictor(SplitConformalPredictor):
         super().calibrate(X_cal, y_cal)
         self.adaptive_quantile = self.quantile
 
+    @overload
+    def predict(
+        self,
+        X_test: np.ndarray,
+        return_scores: Literal[False] = False
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]: ...
+
+    @overload
+    def predict(
+        self,
+        X_test: np.ndarray,
+        return_scores: Literal[True]
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: ...
+
     def predict(
         self,
         X_test: np.ndarray,
         return_scores: bool = False
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    ) -> Union[Tuple[np.ndarray, np.ndarray, np.ndarray], Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
         """
         Predict using adaptive quantile.
 

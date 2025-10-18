@@ -90,12 +90,34 @@ Model evaluation and metrics.
 
 **Perfect for:** Understanding model quality
 
+### 8. **[exogenous_variables.ipynb](../experiments/notebooks/exogenous_variables.ipynb)** - NEW in v0.2.0! 🚀
+Using external features to boost accuracy by 30-50%.
+
+**What you'll learn:**
+- How to use exogenous variables (temperature, holidays, promotions)
+- Past-observed vs future-known covariates
+- Comparing fusion strategies (concat, gated, attention)
+- Real-world examples with visualizations
+
+**Perfect for:** Maximizing forecast accuracy with external data
+
+### 9. **[conformal_prediction.ipynb](../experiments/notebooks/conformal_prediction.ipynb)** - NEW in v0.2.0! 📊
+Rigorous uncertainty quantification with coverage guarantees.
+
+**What you'll learn:**
+- Split conformal prediction (simple & reliable)
+- Adaptive conformal prediction (for non-stationary data)
+- Guaranteed coverage intervals (e.g., 95%)
+- When and why to use conformal prediction
+
+**Perfect for:** Decision-making, risk management, safety-critical applications
+
 ---
 
 ## 🎯 Choose Your Path
 
 ### I want to start forecasting ASAP
-→ Start with **quickstart_sklearn_api.py**
+→ Start with **quickstart_easy_api.py**
 
 ### I want to understand everything
 → Work through **tutorial.ipynb**
@@ -108,6 +130,12 @@ Model evaluation and metrics.
 
 ### I have messy data
 → Learn from **preprocessing.ipynb**
+
+### I want to use external features (NEW!)
+→ Explore **exogenous_variables.ipynb** 🚀
+
+### I need rigorous uncertainty quantification (NEW!)
+→ Check out **conformal_prediction.ipynb** 📊
 
 ---
 
@@ -133,9 +161,9 @@ All examples use datasets from `dataset_examples/`:
 ## 🚀 Coming Soon
 
 - Google Colab notebooks (click to run in browser!)
-- Exogenous variables examples
-- Conformal prediction demos
 - Attention visualization examples
-- Hyperparameter tuning tutorials
+- Hyperparameter tuning with Optuna
+- Pre-trained models and transfer learning
+- MLOps integration (MLflow, Weights & Biases)
 
-**Stay tuned for updates!**
+**Stay tuned for v0.3.0!**

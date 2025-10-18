@@ -13,6 +13,7 @@ from .models.apdtflow import APDTFlow
 from .models.transformer_forecaster import TransformerForecaster
 from .models.tcn_forecaster import TCNForecaster
 from .models.ensemble_forecaster import EnsembleForecaster
+from .conformal import SplitConformalPredictor, AdaptiveConformalPredictor
 
 
 class APDTFlowForecaster:
@@ -113,7 +114,7 @@ class APDTFlowForecaster:
         self.use_conformal = use_conformal
         self.conformal_method = conformal_method
         self.calibration_split = calibration_split
-        self.conformal_predictor: Optional[object] = None
+        self.conformal_predictor: Optional[Union[SplitConformalPredictor, AdaptiveConformalPredictor]] = None
 
         # Auto-detect device
         if device is None:
@@ -552,6 +553,7 @@ class APDTFlowForecaster:
             history = self.data_df_[self.target_col_].values[-with_history:]
         else:
             # Reconstruct from last_sequence_
+            assert self.last_sequence_ is not None, "No sequence data available for plotting"
             history_norm = self.last_sequence_
             history = history_norm * self.scaler_std_ + self.scaler_mean_
 

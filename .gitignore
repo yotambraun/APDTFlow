@@ -1,32 +1,54 @@
 # Virtual Environment
 venv/
+env/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
 # Checkpoints and Logs
 checkpoints/
 logs/
 training.log
+*.log
 
+# Build artifacts
 build/
 dist/
 *.egg-info/
 apdtflow.egg-info/
-apdtflow.egg-info
+*.egg
 
-
+# IDE and Editor
+.vscode/
+.idea/
 *.swp
+*.swo
+*~
 .DS_Store
 
-recipe_to_update_pacakge.txt
+# Claude Code
+.claude/
 
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+
+# Temporary files
+*.tmp
+*.bak
+*.orig
+recipe_to_update_pacakge.txt
+command_pytest.txt
+
+# PyPI credentials
 .pypirc
 
-.pytest_cache
-# Coverage reports
-coverage.xml
-.coverage
-htmlcov/
-
-command_pytest.txt
-.coverage.yotambraun.*
+# OS specific
+Thumbs.db
+.Spotlight-V100
+.Trashes

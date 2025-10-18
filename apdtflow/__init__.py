@@ -1,8 +1,12 @@
 import os
 import sys
 from .logger_util import get_logger
+from .forecaster import APDTFlowForecaster
 
 get_logger("APDTFlow")
+
+# Expose main API
+__all__ = ['APDTFlowForecaster']
 
 
 def _print_welcome_banner():

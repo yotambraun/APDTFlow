@@ -5,7 +5,18 @@ All notable changes to APDTFlow will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0] - 2025-10-18 (Feature Preview)
+## [0.2.1] - 2025-10-18
+
+### Fixed
+- Fixed flake8 F541 linting error in conformal.py (f-string without placeholders)
+
+### Changed
+- Updated README.md to highlight v0.2.0 features (exogenous variables and conformal prediction)
+- Enhanced feature comparison table in README
+
+---
+
+## [0.2.0] - 2025-10-18
 
 ### Added - Advanced Features for State-of-the-Art Forecasting! 🚀
 

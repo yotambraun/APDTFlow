@@ -366,7 +366,7 @@ def plot_conformal_intervals(
     ax.fill_between(
         x, lower, upper,
         alpha=0.3, color='red',
-        label=f'Conformal Interval'
+        label='Conformal Interval'
     )
 
     # Calculate coverage

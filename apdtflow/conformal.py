@@ -98,14 +98,16 @@ class SplitConformalPredictor:
         self,
         X_test: np.ndarray,
         return_scores: Literal[False] = False
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]: ...
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        ...
 
     @overload
     def predict(
         self,
         X_test: np.ndarray,
         return_scores: Literal[True]
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: ...
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        ...
 
     def predict(
         self,
@@ -234,14 +236,16 @@ class AdaptiveConformalPredictor(SplitConformalPredictor):
         self,
         X_test: np.ndarray,
         return_scores: Literal[False] = False
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]: ...
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        ...
 
     @overload
     def predict(
         self,
         X_test: np.ndarray,
         return_scores: Literal[True]
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: ...
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        ...
 
     def predict(
         self,

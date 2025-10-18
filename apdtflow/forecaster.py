@@ -501,7 +501,7 @@ class APDTFlowForecaster:
                 else:
                     # Get conformal intervals
                     lower, pred_conf, upper = self.conformal_predictor.predict(
-                        preds_denorm.reshape(-1, 1), alpha=alpha
+                        preds_denorm.reshape(-1, 1)
                     )
                     return lower.flatten(), preds_denorm, upper.flatten()
 

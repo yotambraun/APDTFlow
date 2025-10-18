@@ -142,6 +142,7 @@ class SplitConformalPredictor:
         upper = preds + self.quantile
 
         if return_scores:
+            assert self.nonconformity_scores is not None, "Calibration scores not available"
             return lower, preds, upper, self.nonconformity_scores
         else:
             return lower, preds, upper
@@ -276,6 +277,7 @@ class AdaptiveConformalPredictor(SplitConformalPredictor):
         upper = preds + self.adaptive_quantile
 
         if return_scores:
+            assert self.nonconformity_scores is not None, "Calibration scores not available"
             return lower, preds, upper, self.nonconformity_scores
         else:
             return lower, preds, upper

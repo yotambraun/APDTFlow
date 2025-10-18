@@ -138,6 +138,10 @@ class ExogenousFeatureFusion(nn.Module):
             output = self.output_proj(attn_out)  # (batch, T, 1)
             return output.transpose(1, 2)  # (batch, 1, T)
 
+        else:
+            # This should never be reached due to validation in __init__
+            raise ValueError(f"Invalid fusion_type: {self.fusion_type}")
+
 
 class ExogenousProcessor:
     """

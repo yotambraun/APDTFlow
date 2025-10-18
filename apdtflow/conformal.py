@@ -50,8 +50,8 @@ class SplitConformalPredictor:
         """
         self.predict_fn = predict_fn
         self.alpha = alpha
-        self.nonconformity_scores = None
-        self.quantile = None
+        self.nonconformity_scores: Optional[np.ndarray] = None
+        self.quantile: Optional[float] = None
         self.is_calibrated = False
 
     def calibrate(self, X_cal: np.ndarray, y_cal: np.ndarray) -> None:
@@ -201,8 +201,8 @@ class AdaptiveConformalPredictor(SplitConformalPredictor):
         """
         super().__init__(predict_fn, alpha)
         self.gamma = gamma
-        self.adaptive_quantile = None
-        self.coverage_history = []
+        self.adaptive_quantile: Optional[float] = None
+        self.coverage_history: list[bool] = []
 
     def calibrate(self, X_cal: np.ndarray, y_cal: np.ndarray) -> None:
         """
@@ -230,7 +230,7 @@ class AdaptiveConformalPredictor(SplitConformalPredictor):
         Returns:
             (lower_bound, prediction, upper_bound)
         """
-        if not self.is_calibrated:
+        if not self.is_calibrated or self.adaptive_quantile is None:
             raise RuntimeError("Must call calibrate() before predict()")
 
         # Get point predictions
@@ -266,6 +266,9 @@ class AdaptiveConformalPredictor(SplitConformalPredictor):
         Returns:
             (lower_bound, prediction, upper_bound)
         """
+        if not self.is_calibrated or self.adaptive_quantile is None:
+            raise RuntimeError("Must call calibrate() before predict_and_update()")
+
         # Make prediction
         preds = self.predict_fn(X_test)
 
@@ -321,11 +324,15 @@ class AdaptiveConformalPredictor(SplitConformalPredictor):
 
         recent_coverage = np.mean(self.coverage_history[-100:]) if len(self.coverage_history) >= 100 else np.mean(self.coverage_history)
 
+        # Ensure quantiles are not None
+        current_q = self.adaptive_quantile if self.adaptive_quantile is not None else 0.0
+        initial_q = self.quantile if self.quantile is not None else 0.0
+
         return {
             'num_updates': len(self.coverage_history),
-            'current_quantile': self.adaptive_quantile,
-            'initial_quantile': self.quantile,
-            'quantile_change': self.adaptive_quantile - self.quantile,
+            'current_quantile': current_q,
+            'initial_quantile': initial_q,
+            'quantile_change': current_q - initial_q,
             'recent_coverage': recent_coverage,
             'target_coverage': 1 - self.alpha
         }

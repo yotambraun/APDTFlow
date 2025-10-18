@@ -73,7 +73,7 @@ class TimeSeriesWindowDataset(Dataset):
                 'target': self.series[i:i+total_length],
                 'idx': i
             }
-            if self.has_exog:
+            if self.has_exog and self.exog_data is not None:
                 sample['exog'] = self.exog_data[i:i+total_length]
             self.samples.append(sample)
 

@@ -102,18 +102,18 @@ class APDTFlowForecaster:
 
         # Exogenous variables (NEW)
         self.exog_fusion_type = exog_fusion_type
-        self.exog_cols_ = None
-        self.future_exog_cols_ = None
+        self.exog_cols_: Optional[List[str]] = None
+        self.future_exog_cols_: Optional[List[str]] = None
         self.num_exog_features_ = 0
-        self.exog_mean_ = None
-        self.exog_std_ = None
+        self.exog_mean_: Optional[np.ndarray] = None
+        self.exog_std_: Optional[np.ndarray] = None
         self.has_exog_ = False
 
         # Conformal prediction (NEW)
         self.use_conformal = use_conformal
         self.conformal_method = conformal_method
         self.calibration_split = calibration_split
-        self.conformal_predictor = None
+        self.conformal_predictor: Optional[object] = None
 
         # Auto-detect device
         if device is None:
@@ -122,17 +122,17 @@ class APDTFlowForecaster:
             self.device = torch.device(device)
 
         # Model will be initialized in fit()
-        self.model = None
+        self.model: Optional[Union[APDTFlow, TransformerForecaster, TCNForecaster, EnsembleForecaster]] = None
         self._is_fitted = False
 
         # Store data info
-        self.scaler_mean_ = None
-        self.scaler_std_ = None
-        self.last_sequence_ = None
-        self.last_exog_sequence_ = None  # NEW
-        self.target_col_ = None
-        self.date_col_ = None
-        self.data_df_ = None
+        self.scaler_mean_: Optional[float] = None
+        self.scaler_std_: Optional[float] = None
+        self.last_sequence_: Optional[np.ndarray] = None
+        self.last_exog_sequence_: Optional[np.ndarray] = None  # NEW
+        self.target_col_: Optional[str] = None
+        self.date_col_: Optional[str] = None
+        self.data_df_: Optional[pd.DataFrame] = None
 
     def _initialize_model(self):
         """Initialize the forecasting model based on model_type."""
@@ -222,7 +222,8 @@ class APDTFlowForecaster:
 
         # Create sliding windows
         X_list, y_list = [], []
-        exog_X_list, exog_y_list = [], []
+        exog_X_list: List[np.ndarray] = []
+        exog_y_list: List[np.ndarray] = []
         total_length = self.history_length + self.forecast_horizon
 
         for i in range(len(series_norm) - total_length + 1):
@@ -321,6 +322,7 @@ class APDTFlowForecaster:
 
         # Initialize model
         self.model = self._initialize_model()
+        assert self.model is not None, "Model initialization failed"
 
         # Create DataLoader
         if has_exog_data:
@@ -422,6 +424,8 @@ class APDTFlowForecaster:
         """
         if not self._is_fitted:
             raise RuntimeError("Model must be fitted before predicting")
+
+        assert self.model is not None, "Model is None despite being fitted"
 
         if steps is None:
             steps = self.forecast_horizon
@@ -533,9 +537,12 @@ class APDTFlowForecaster:
         if not self._is_fitted:
             raise RuntimeError("Model must be fitted before plotting")
 
+        assert self.scaler_std_ is not None and self.scaler_mean_ is not None, "Scaler not initialized"
+
         # Get predictions
         if show_uncertainty:
-            preds, uncertainty = self.predict(return_uncertainty=True)
+            result = self.predict(return_uncertainty=True)
+            preds, uncertainty = result  # type: ignore[misc]
         else:
             preds = self.predict()
             uncertainty = None

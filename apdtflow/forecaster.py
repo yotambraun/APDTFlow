@@ -517,7 +517,7 @@ class APDTFlowForecaster:
 
                 epoch_loss += loss.item() * len(x_batch)
 
-            avg_train_loss = epoch_loss / len(train_loader.dataset)
+            avg_train_loss = epoch_loss / float(len(train_loader.dataset))  # type: ignore[arg-type]
 
             # Validation if early stopping enabled
             if self.early_stopping and val_loader is not None:
@@ -546,7 +546,7 @@ class APDTFlowForecaster:
 
                         val_loss += loss.item() * len(x_batch)
 
-                avg_val_loss = val_loss / len(val_loader.dataset)
+                avg_val_loss = val_loss / float(len(val_loader.dataset))  # type: ignore[arg-type]
 
                 # Early stopping check
                 if avg_val_loss < best_val_loss:
@@ -943,6 +943,7 @@ class APDTFlowForecaster:
                 ).unsqueeze(0).unsqueeze(0).to(self.device)
 
                 t_span = torch.linspace(0, 1, steps=self.history_length, device=self.device)
+                assert self.model is not None, "Model must be initialized"
                 preds, _ = self.model(x, t_span, exog=exog_tensor)
                 pred_denorm = preds.cpu().numpy().flatten() * self.scaler_std_ + self.scaler_mean_
 
@@ -952,14 +953,14 @@ class APDTFlowForecaster:
         if len(predictions) == 0:
             raise ValueError("Not enough data for evaluation")
 
-        predictions = np.array(predictions)
+        predictions_arr = np.array(predictions)
         targets = np.array([
             y_true[i + self.history_length:i + self.history_length + self.forecast_horizon]
             for i in range(len(predictions))
         ])
 
         # Flatten for metric calculation
-        pred_flat = predictions.flatten()
+        pred_flat = predictions_arr.flatten()
         true_flat = targets.flatten()
 
         if metric == 'mse':
@@ -1137,8 +1138,8 @@ class APDTFlowForecaster:
             model.conformal_predictor.is_calibrated = conformal_state['is_calibrated']
 
             # Restore adaptive quantile for adaptive conformal
-            if 'adaptive_quantile' in conformal_state:
-                model.conformal_predictor.adaptive_quantile = conformal_state['adaptive_quantile']
+            if 'adaptive_quantile' in conformal_state and hasattr(model.conformal_predictor, 'adaptive_quantile'):
+                model.conformal_predictor.adaptive_quantile = conformal_state['adaptive_quantile']  # type: ignore[attr-defined]
         else:
             model.conformal_predictor = None
 

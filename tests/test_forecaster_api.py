@@ -5,7 +5,6 @@ Tests new v0.2.2 features: data validation, save/load, score, summary, early sto
 import numpy as np
 import pandas as pd
 import pytest
-import torch
 import os
 import tempfile
 from apdtflow.forecaster import APDTFlowForecaster

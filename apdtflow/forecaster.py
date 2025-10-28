@@ -617,7 +617,8 @@ class APDTFlowForecaster:
 
             # Initialize conformal predictor with identity function
             # (we already have predictions, so predict_fn just returns input)
-            identity_fn = lambda x: x
+            def identity_fn(x):
+                return x
 
             if self.conformal_method == 'split':
                 self.conformal_predictor = SplitConformalPredictor(
@@ -1116,7 +1117,8 @@ class APDTFlowForecaster:
         conformal_state = state.get('conformal_state', None)
         if conformal_state and model.use_conformal:
             # Reconstruct conformal predictor with identity function
-            identity_fn = lambda x: x
+            def identity_fn(x):
+                return x
 
             if model.conformal_method == 'split':
                 model.conformal_predictor = SplitConformalPredictor(
@@ -1173,7 +1175,7 @@ class APDTFlowForecaster:
         print(f"  Use Embedding:       {self.use_embedding}")
 
         if self.has_exog_:
-            print(f"\nExogenous Variables:")
+            print("\nExogenous Variables:")
             print(f"  Number of Features:  {self.num_exog_features_}")
             print(f"  Fusion Type:         {self.exog_fusion_type}")
             print(f"  Features:            {self.exog_cols_}")
@@ -1181,11 +1183,11 @@ class APDTFlowForecaster:
                 print(f"  Future-Known:        {self.future_exog_cols_}")
 
         if self.use_conformal:
-            print(f"\nConformal Prediction:")
+            print("\nConformal Prediction:")
             print(f"  Method:              {self.conformal_method}")
             print(f"  Calibration Split:   {self.calibration_split}")
 
-        print(f"\nTraining Configuration:")
+        print("\nTraining Configuration:")
         print(f"  Learning Rate:       {self.learning_rate}")
         print(f"  Batch Size:          {self.batch_size}")
         print(f"  Epochs:              {self.num_epochs}")
@@ -1196,7 +1198,7 @@ class APDTFlowForecaster:
             total_params = sum(p.numel() for p in self.model.parameters())
             trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
 
-            print(f"\nModel Parameters:")
+            print("\nModel Parameters:")
             print(f"  Total Parameters:    {total_params:,}")
             print(f"  Trainable Parameters: {trainable_params:,}")
             print(f"  Non-trainable:       {total_params - trainable_params:,}")
@@ -1205,7 +1207,7 @@ class APDTFlowForecaster:
             param_size_mb = total_params * 4 / (1024 ** 2)  # Assuming float32
             print(f"  Model Size:          ~{param_size_mb:.2f} MB")
 
-        print(f"\nStatus:")
+        print("\nStatus:")
         print(f"  Fitted:              {self._is_fitted}")
         if self._is_fitted:
             print(f"  Target Column:       {self.target_col_}")

@@ -5,7 +5,6 @@ Ensures save/load, score, early stopping, and summary work correctly with exog a
 import numpy as np
 import pandas as pd
 import pytest
-import torch
 import os
 import tempfile
 from apdtflow.forecaster import APDTFlowForecaster

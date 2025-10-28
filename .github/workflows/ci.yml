@@ -6,15 +6,21 @@ on:
     paths-ignore:
       - 'docs/**'
       - 'README.md'
+      - 'CHANGELOG.md'
+      - 'examples/**'
       - '.gitignore'
       - 'assets/**'
+      - '*.ipynb'
   pull_request:
     branches: [ main ]
     paths-ignore:
       - 'docs/**'
       - 'README.md'
+      - 'CHANGELOG.md'
+      - 'examples/**'
       - '.gitignore'
       - 'assets/**'
+      - '*.ipynb'
 
 jobs:
   build-and-test:

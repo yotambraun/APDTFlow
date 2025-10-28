@@ -10,8 +10,41 @@
 [![CI](https://github.com/yotambraun/APDTFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/yotambraun/APDTFlow/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/yotambraun/APDTFlow/branch/main/graph/badge.svg)](https://codecov.io/gh/yotambraun/APDTFlow)
 
-
 APDTFlow is a modern and extensible forecasting framework for time series data that leverages advanced techniques including neural ordinary differential equations (Neural ODEs), transformer-based components, and probabilistic modeling. Its modular design allows researchers and practitioners to experiment with multiple forecasting models and easily extend the framework for new methods.
+
+## Why APDTFlow?
+
+APDTFlow stands out as the **only Python package** offering continuous-time forecasting with Neural ODEs, combined with cutting-edge 2025 research features:
+
+- **Continuous-Time Neural ODEs**: Model temporal dynamics with differential equations instead of discrete steps - better for irregular time series and missing data
+- **Conformal Prediction**: Get rigorous uncertainty quantification with finite-sample coverage guarantees (not just asymptotic)
+- **Advanced Exogenous Support**: 3 fusion strategies (gated, attention, concat) for incorporating external features - boost accuracy by 30-50%
+- **Simple Yet Powerful API**: Just `fit()` and `predict()` - but with the flexibility of multiple architectures (ODE, Transformer, TCN, Ensemble)
+- **Built for Researchers**: State-of-the-art methods from ICLR 2025, arXiv 2025 papers, ready to use in production
+
+**When to Use APDTFlow:**
+
+- **Financial forecasting** with rigorous uncertainty bounds for risk management
+- **Retail demand prediction** with holidays, promotions, and seasonal patterns
+- **Energy consumption forecasting** incorporating weather, temperature, and external events
+- **Healthcare demand planning** with demographic and policy changes as exogenous features
+- **Any scenario** requiring continuous-time modeling, conformal prediction, or sophisticated handling of external variables
+
+## Installation
+
+APDTFlow is published on [PyPI](https://pypi.org/project/apdtflow). To install:
+
+```bash
+pip install apdtflow
+```
+
+For development, clone the repository and install in editable mode:
+
+```bash
+git clone https://github.com/yotambraun/APDTFlow.git
+cd APDTFlow
+pip install -e .
+```
 
 ## 🚀 New in v0.2.0: Advanced Features!
 
@@ -131,36 +164,21 @@ Below is an example forecast produced by the APDTFlow model for a forecast horiz
 
 ## Table of Contents
 
-1. [Installation](#installation)
-2. [Quick Start](#quick-start)
+1. [Quick Start](#quick-start)
    - [Training](#training)
    - [Inference](#inference)
-3. [Data Processing and Augmentation](#data-processing-and-augmentation)
-4. [Forecasting Approaches](#forecasting-approaches)
+2. [Data Processing and Augmentation](#data-processing-and-augmentation)
+3. [Forecasting Approaches](#forecasting-approaches)
    - [APDTFlow](#apdtflow)
    - [TransformerForecaster](#transformerforecaster)
    - [TCNForecaster](#tcnforecaster)
    - [EnsembleForecaster](#ensembleforecaster)
-5. [Evaluation and Metrics](#evaluation-and-metrics)
-6. [Command-Line Interface (CLI)](#command-line-interface-cli)
-7. [Cross-Validation Strategies](#cross-validation-strategies)
-8. [Documentation and Examples](#documentation-and-examples)
-9. [License](#license)
+4. [Evaluation and Metrics](#evaluation-and-metrics)
+5. [Command-Line Interface (CLI)](#command-line-interface-cli)
+6. [Cross-Validation Strategies](#cross-validation-strategies)
+7. [Documentation and Examples](#documentation-and-examples)
+8. [License](#license)
 
-## 1. Installation
-
-APDTFlow is published on [PyPI](https://pypi.org/project/apdtflow). To install:
-
-```bash
-pip install apdtflow
-```
-For development, clone the repository and install in editable mode:
-
-```bash
-git clone https://github.com/yotambraun/APDTFlow.git
-cd APDTFlow
-pip install -e .
-```
 ## ✨ New Features in v0.1.24
 
 ### 🚀 Easy-to-Use High-Level API (MAJOR UPDATE!)
@@ -186,6 +204,15 @@ pip install -e .
   - `embed_dim`: The embedding dimension (recommended to match `hidden_dim`).
 
 ## 2. Quick Start
+
+**Get started in 5 lines:**
+
+```python
+from apdtflow import APDTFlowForecaster
+model = APDTFlowForecaster(forecast_horizon=7)
+model.fit(df, target_col='sales', date_col='date')
+predictions = model.predict()
+```
 
 ### Simple API (Recommended for Most Users)
 

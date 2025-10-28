@@ -71,7 +71,7 @@ class APDTFlowForecaster:
 
     def __init__(
         self,
-        model_type: str = 'apdtflow',
+        model_type: str = 'apdtflow',  # 'apdtflow', 'transformer', 'tcn'
         num_scales: int = 3,
         hidden_dim: int = 16,
         filter_size: int = 5,
@@ -147,27 +147,65 @@ class APDTFlowForecaster:
 
     def _initialize_model(self):
         """Initialize the forecasting model based on model_type."""
-        model_params = {
-            'num_scales': self.num_scales,
-            'input_channels': 1,
-            'filter_size': self.filter_size,
-            'hidden_dim': self.hidden_dim,
-            'output_dim': 1,
-            'forecast_horizon': self.forecast_horizon,
-            'use_embedding': self.use_embedding
-        }
-
-        # Add exogenous parameters for APDTFlow
         if self.model_type == 'apdtflow':
-            model_params['num_exog_features'] = self.num_exog_features_
-            model_params['exog_fusion_type'] = self.exog_fusion_type
+            model_params = {
+                'num_scales': self.num_scales,
+                'input_channels': 1,
+                'filter_size': self.filter_size,
+                'hidden_dim': self.hidden_dim,
+                'output_dim': 1,
+                'forecast_horizon': self.forecast_horizon,
+                'use_embedding': self.use_embedding,
+                'num_exog_features': self.num_exog_features_,
+                'exog_fusion_type': self.exog_fusion_type
+            }
             model = APDTFlow(**model_params)
         elif self.model_type == 'transformer':
+            model_params = {
+                'input_dim': 1,
+                'model_dim': self.hidden_dim,
+                'num_layers': 2,
+                'nhead': 4,
+                'forecast_horizon': self.forecast_horizon
+            }
             model = TransformerForecaster(**model_params)
         elif self.model_type == 'tcn':
+            model_params = {
+                'input_channels': 1,
+                'num_channels': [self.hidden_dim] * 3,
+                'kernel_size': self.filter_size,
+                'forecast_horizon': self.forecast_horizon
+            }
             model = TCNForecaster(**model_params)
         elif self.model_type == 'ensemble':
-            model = EnsembleForecaster(**model_params)
+            # Create ensemble of APDTFlow, Transformer, and TCN
+            apdtflow_model = APDTFlow(
+                num_scales=self.num_scales,
+                input_channels=1,
+                filter_size=self.filter_size,
+                hidden_dim=self.hidden_dim,
+                output_dim=1,
+                forecast_horizon=self.forecast_horizon,
+                use_embedding=self.use_embedding,
+                num_exog_features=self.num_exog_features_,
+                exog_fusion_type=self.exog_fusion_type
+            )
+            transformer_model = TransformerForecaster(
+                input_dim=1,
+                model_dim=self.hidden_dim,
+                num_layers=2,
+                nhead=4,
+                forecast_horizon=self.forecast_horizon
+            )
+            tcn_model = TCNForecaster(
+                input_channels=1,
+                num_channels=[self.hidden_dim] * 3,
+                kernel_size=self.filter_size,
+                forecast_horizon=self.forecast_horizon
+            )
+            model = EnsembleForecaster(
+                models=[apdtflow_model, transformer_model, tcn_model]
+            )
         else:
             raise ValueError(f"Unknown model_type: {self.model_type}")
 
@@ -403,6 +441,13 @@ class APDTFlowForecaster:
             print(f"Fitting {self.model_type} model...")
             print(f"Device: {self.device}")
 
+        # Validate model_type
+        if self.model_type == 'ensemble':
+            raise ValueError(
+                "model_type='ensemble' is not currently supported in APDTFlowForecaster. "
+                "Please use 'apdtflow', 'transformer', or 'tcn'."
+            )
+
         # Validate data before proceeding
         self._validate_data(data, target_col, date_col, exog_cols)
 
@@ -414,6 +459,11 @@ class APDTFlowForecaster:
 
         # Check exogenous variables
         if exog_cols:
+            if self.model_type != 'apdtflow':
+                raise ValueError(
+                    f"Exogenous variables are only supported with model_type='apdtflow'. "
+                    f"Current model_type='{self.model_type}' does not support exog_cols."
+                )
             self.has_exog_ = True
             self.num_exog_features_ = len(exog_cols)
             if self.verbose:
@@ -444,6 +494,16 @@ class APDTFlowForecaster:
         assert self.model is not None, "Model initialization failed"
 
         # Create DataLoader(s) - split train/val if early stopping enabled
+        # For non-APDTFlow models, reshape tensors to expected format
+        if self.model_type == 'transformer':
+            # Transformer expects (batch, 1, time, features) format
+            X = X.unsqueeze(-1)  # (batch, 1, history_length) -> (batch, 1, history_length, 1)
+            # y stays as (batch, 1, forecast_horizon) for proper transpose in model
+        elif self.model_type == 'tcn':
+            # TCN expects (batch, 1, channels, time) format
+            X = X.unsqueeze(2)  # (batch, 1, history_length) -> (batch, 1, 1, history_length)
+            y = y.unsqueeze(2)  # (batch, 1, forecast_horizon) -> (batch, 1, 1, forecast_horizon)
+
         if has_exog_data:
             dataset = TensorDataset(X, y, exog_X, exog_y)
         else:
@@ -468,121 +528,138 @@ class APDTFlowForecaster:
             train_loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
             val_loader = None
 
-        # Train
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        # Train - use different training loops for different model types
+        if self.model_type == 'apdtflow':
+            # APDTFlow-specific training with Neural ODE
+            optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
 
-        # Early stopping tracking
-        best_val_loss = float('inf')
-        epochs_without_improvement = 0
-        best_model_state = None
+            # Early stopping tracking
+            best_val_loss = float('inf')
+            epochs_without_improvement = 0
+            best_model_state = None
 
-        # Create progress bar
-        pbar = tqdm(range(self.num_epochs), desc="Training", disable=not self.verbose)
+            # Create progress bar
+            pbar = tqdm(range(self.num_epochs), desc="Training", disable=not self.verbose)
 
-        for epoch in pbar:
-            self.model.train()
-            epoch_loss = 0.0
+            for epoch in pbar:
+                self.model.train()
+                epoch_loss = 0.0
 
-            for batch_data in train_loader:
-                if has_exog_data:
-                    x_batch, y_batch, exog_x_batch, exog_y_batch = batch_data
-                    exog_x_batch = exog_x_batch.to(self.device)
+                for batch_data in train_loader:
+                    if has_exog_data:
+                        x_batch, y_batch, exog_x_batch, exog_y_batch = batch_data
+                        exog_x_batch = exog_x_batch.to(self.device)
+                    else:
+                        x_batch, y_batch = batch_data
+                        exog_x_batch = None
+
+                    x_batch = x_batch.to(self.device)
+                    y_batch = y_batch.to(self.device)
+
+                    # Create time span
+                    t_span = torch.linspace(
+                        0, 1,
+                        steps=self.history_length,
+                        device=self.device
+                    )
+
+                    # Forward pass
+                    optimizer.zero_grad()
+                    preds, pred_logvars = self.model(x_batch, t_span, exog=exog_x_batch)
+
+                    # Loss (negative log-likelihood)
+                    mse = (preds - y_batch.transpose(1, 2)) ** 2
+                    loss = torch.mean(
+                        0.5 * (mse / (pred_logvars.exp() + 1e-6)) + 0.5 * pred_logvars
+                    )
+
+                    # Backward pass
+                    loss.backward()
+                    optimizer.step()
+
+                    epoch_loss += loss.item() * len(x_batch)
+
+                avg_train_loss = epoch_loss / float(len(train_loader.dataset))  # type: ignore[arg-type]
+
+                # Validation if early stopping enabled
+                if self.early_stopping and val_loader is not None:
+                    self.model.eval()
+                    val_loss = 0.0
+
+                    with torch.no_grad():
+                        for batch_data in val_loader:
+                            if has_exog_data:
+                                x_batch, y_batch, exog_x_batch, exog_y_batch = batch_data
+                                exog_x_batch = exog_x_batch.to(self.device)
+                            else:
+                                x_batch, y_batch = batch_data
+                                exog_x_batch = None
+
+                            x_batch = x_batch.to(self.device)
+                            y_batch = y_batch.to(self.device)
+
+                            t_span = torch.linspace(0, 1, steps=self.history_length, device=self.device)
+                            preds, pred_logvars = self.model(x_batch, t_span, exog=exog_x_batch)
+
+                            mse = (preds - y_batch.transpose(1, 2)) ** 2
+                            loss = torch.mean(
+                                0.5 * (mse / (pred_logvars.exp() + 1e-6)) + 0.5 * pred_logvars
+                            )
+
+                            val_loss += loss.item() * len(x_batch)
+
+                    avg_val_loss = val_loss / float(len(val_loader.dataset))  # type: ignore[arg-type]
+
+                    # Early stopping check
+                    if avg_val_loss < best_val_loss:
+                        best_val_loss = avg_val_loss
+                        epochs_without_improvement = 0
+                        best_model_state = self.model.state_dict().copy()
+                    else:
+                        epochs_without_improvement += 1
+
+                    # Update progress bar
+                    pbar.set_postfix({
+                        'train_loss': f'{avg_train_loss:.4f}',
+                        'val_loss': f'{avg_val_loss:.4f}',
+                        'patience': f'{epochs_without_improvement}/{self.patience}'
+                    })
+
+                    # Stop if patience exceeded
+                    if epochs_without_improvement >= self.patience:
+                        if self.verbose:
+                            print(f"\nEarly stopping at epoch {epoch + 1}")
+                            print(f"Best validation loss: {best_val_loss:.4f}")
+                        # Restore best model
+                        if best_model_state:
+                            self.model.load_state_dict(best_model_state)
+                        break
                 else:
-                    x_batch, y_batch = batch_data
-                    exog_x_batch = None
+                    # Update progress bar with training loss only
+                    pbar.set_postfix({'loss': f'{avg_train_loss:.4f}'})
 
-                x_batch = x_batch.to(self.device)
-                y_batch = y_batch.to(self.device)
-
-                # Create time span
-                t_span = torch.linspace(
-                    0, 1,
-                    steps=self.history_length,
-                    device=self.device
-                )
-
-                # Forward pass
-                optimizer.zero_grad()
-                preds, pred_logvars = self.model(x_batch, t_span, exog=exog_x_batch)
-
-                # Loss (negative log-likelihood)
-                mse = (preds - y_batch.transpose(1, 2)) ** 2
-                loss = torch.mean(
-                    0.5 * (mse / (pred_logvars.exp() + 1e-6)) + 0.5 * pred_logvars
-                )
-
-                # Backward pass
-                loss.backward()
-                optimizer.step()
-
-                epoch_loss += loss.item() * len(x_batch)
-
-            avg_train_loss = epoch_loss / float(len(train_loader.dataset))  # type: ignore[arg-type]
-
-            # Validation if early stopping enabled
-            if self.early_stopping and val_loader is not None:
-                self.model.eval()
-                val_loss = 0.0
-
-                with torch.no_grad():
-                    for batch_data in val_loader:
-                        if has_exog_data:
-                            x_batch, y_batch, exog_x_batch, exog_y_batch = batch_data
-                            exog_x_batch = exog_x_batch.to(self.device)
-                        else:
-                            x_batch, y_batch = batch_data
-                            exog_x_batch = None
-
-                        x_batch = x_batch.to(self.device)
-                        y_batch = y_batch.to(self.device)
-
-                        t_span = torch.linspace(0, 1, steps=self.history_length, device=self.device)
-                        preds, pred_logvars = self.model(x_batch, t_span, exog=exog_x_batch)
-
-                        mse = (preds - y_batch.transpose(1, 2)) ** 2
-                        loss = torch.mean(
-                            0.5 * (mse / (pred_logvars.exp() + 1e-6)) + 0.5 * pred_logvars
-                        )
-
-                        val_loss += loss.item() * len(x_batch)
-
-                avg_val_loss = val_loss / float(len(val_loader.dataset))  # type: ignore[arg-type]
-
-                # Early stopping check
-                if avg_val_loss < best_val_loss:
-                    best_val_loss = avg_val_loss
-                    epochs_without_improvement = 0
-                    best_model_state = self.model.state_dict().copy()
-                else:
-                    epochs_without_improvement += 1
-
-                # Update progress bar
-                pbar.set_postfix({
-                    'train_loss': f'{avg_train_loss:.4f}',
-                    'val_loss': f'{avg_val_loss:.4f}',
-                    'patience': f'{epochs_without_improvement}/{self.patience}'
-                })
-
-                # Stop if patience exceeded
-                if epochs_without_improvement >= self.patience:
-                    if self.verbose:
-                        print(f"\nEarly stopping at epoch {epoch + 1}")
-                        print(f"Best validation loss: {best_val_loss:.4f}")
-                    # Restore best model
-                    if best_model_state:
-                        self.model.load_state_dict(best_model_state)
-                    break
-            else:
-                # Update progress bar with training loss only
-                pbar.set_postfix({'loss': f'{avg_train_loss:.4f}'})
+        else:
+            # Other models (transformer, tcn, ensemble) use their own train_model() method
+            self.model.train_model(
+                train_loader,
+                self.num_epochs,
+                self.learning_rate,
+                self.device
+            )
 
         self._is_fitted = True
 
         if self.verbose:
             print("Training completed!")
 
-        # Create conformal predictor if enabled
+        # Create conformal predictor if enabled (only for APDTFlow)
         if self.use_conformal:
+            if self.model_type != 'apdtflow':
+                raise ValueError(
+                    f"Conformal prediction is only supported with model_type='apdtflow'. "
+                    f"Current model_type='{self.model_type}' does not support conformal prediction."
+                )
+
             if self.verbose:
                 print("Calibrating conformal predictor...")
 
@@ -590,6 +667,9 @@ class APDTFlowForecaster:
             self.model.eval()
             calib_preds = []
             calib_targets = []
+
+            # Create t_span for APDTFlow model
+            t_span = torch.linspace(0, 1, steps=self.history_length, device=self.device)
 
             with torch.no_grad():
                 for batch_data in train_loader:
@@ -700,48 +780,63 @@ class APDTFlowForecaster:
         self.model.eval()
 
         with torch.no_grad():
-            # Prepare input
-            x = torch.tensor(
-                self.last_sequence_,
-                dtype=torch.float32
-            ).unsqueeze(0).unsqueeze(0).to(self.device)
-
-            t_span = torch.linspace(
-                0, 1,
-                steps=self.history_length,
-                device=self.device
-            )
-
-            # Prepare exog if needed
-            exog_tensor = None
-            if self.has_exog_ and exog_future is not None:
-                # Process future exog
-                if isinstance(exog_future, pd.DataFrame):
-                    exog_array = exog_future[self.future_exog_cols_ or self.exog_cols_].values
-                else:
-                    exog_array = np.array(exog_future)
-
-                # Normalize using stored parameters
-                exog_norm = (exog_array - self.exog_mean_) / self.exog_std_
-
-                # Combine with last exog sequence
-                if self.last_exog_sequence_ is not None:
-                    full_exog = np.vstack([self.last_exog_sequence_, exog_norm[:steps]])
-                    exog_input = full_exog[:self.history_length]
-                else:
-                    exog_input = exog_norm[:self.history_length]
-
-                exog_tensor = torch.tensor(
-                    exog_input,
+            if self.model_type == 'apdtflow':
+                # APDTFlow-specific prediction
+                # Prepare input
+                x = torch.tensor(
+                    self.last_sequence_,
                     dtype=torch.float32
-                ).T.unsqueeze(0).to(self.device)
+                ).unsqueeze(0).unsqueeze(0).to(self.device)
 
-            # Predict
-            preds, pred_logvars = self.model(x, t_span, exog=exog_tensor)
+                t_span = torch.linspace(
+                    0, 1,
+                    steps=self.history_length,
+                    device=self.device
+                )
 
-            # Denormalize
-            preds_np = preds.cpu().numpy().squeeze()
-            preds_denorm = preds_np * self.scaler_std_ + self.scaler_mean_
+                # Prepare exog if needed
+                exog_tensor = None
+                if self.has_exog_ and exog_future is not None:
+                    # Process future exog
+                    if isinstance(exog_future, pd.DataFrame):
+                        exog_array = exog_future[self.future_exog_cols_ or self.exog_cols_].values
+                    else:
+                        exog_array = np.array(exog_future)
+
+                    # Normalize using stored parameters
+                    exog_norm = (exog_array - self.exog_mean_) / self.exog_std_
+
+                    # Combine with last exog sequence
+                    if self.last_exog_sequence_ is not None:
+                        full_exog = np.vstack([self.last_exog_sequence_, exog_norm[:steps]])
+                        exog_input = full_exog[:self.history_length]
+                    else:
+                        exog_input = exog_norm[:self.history_length]
+
+                    exog_tensor = torch.tensor(
+                        exog_input,
+                        dtype=torch.float32
+                    ).T.unsqueeze(0).to(self.device)
+
+                # Predict
+                preds, pred_logvars = self.model(x, t_span, exog=exog_tensor)
+
+                # Denormalize
+                preds_np = preds.cpu().numpy().squeeze()
+                preds_denorm = preds_np * self.scaler_std_ + self.scaler_mean_
+
+            else:
+                # Other models (transformer, tcn, ensemble)
+                x = torch.tensor(
+                    self.last_sequence_,
+                    dtype=torch.float32
+                ).unsqueeze(0).unsqueeze(-1).to(self.device)
+
+                preds, pred_logvars = self.model.predict(x, self.forecast_horizon, self.device)
+
+                # Denormalize
+                preds_np = preds.cpu().numpy().squeeze()
+                preds_denorm = preds_np * self.scaler_std_ + self.scaler_mean_
 
             # Handle conformal prediction
             if return_intervals == 'conformal':

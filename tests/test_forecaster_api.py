@@ -388,9 +388,9 @@ class TestModelTypes:
             'sales': np.sin(np.arange(100) * 0.1) + np.random.randn(100) * 0.1
         })
 
-    @pytest.mark.parametrize("model_type", ['apdtflow', 'transformer', 'tcn', 'ensemble'])
+    @pytest.mark.parametrize("model_type", ['apdtflow', 'transformer', 'tcn'])
     def test_different_model_types(self, sample_data, model_type):
-        """Test that all model types can be trained and predict."""
+        """Test that supported model types can be trained and predict."""
         model = APDTFlowForecaster(
             model_type=model_type,
             forecast_horizon=7,
@@ -404,6 +404,19 @@ class TestModelTypes:
 
         assert predictions.shape == (7,)
         assert not np.isnan(predictions).any()
+
+    def test_ensemble_not_supported(self, sample_data):
+        """Test that ensemble model type raises ValueError."""
+        model = APDTFlowForecaster(
+            model_type='ensemble',
+            forecast_horizon=7,
+            history_length=20,
+            num_epochs=5,
+            verbose=False
+        )
+
+        with pytest.raises(ValueError, match="not currently supported"):
+            model.fit(sample_data, target_col='sales')
 
 
 class TestPlotForecast:

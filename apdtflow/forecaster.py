@@ -581,6 +581,64 @@ class APDTFlowForecaster:
         if self.verbose:
             print("Training completed!")
 
+        # Create conformal predictor if enabled
+        if self.use_conformal:
+            if self.verbose:
+                print("Calibrating conformal predictor...")
+
+            # Generate calibration predictions
+            self.model.eval()
+            calib_preds = []
+            calib_targets = []
+
+            with torch.no_grad():
+                for batch_data in train_loader:
+                    if has_exog_data:
+                        x_batch, y_batch, exog_x_batch, exog_y_batch = batch_data
+                        exog_x_batch = exog_x_batch.to(self.device)
+                    else:
+                        x_batch, y_batch = batch_data
+                        exog_x_batch = None
+
+                    x_batch = x_batch.to(self.device)
+                    y_batch = y_batch.to(self.device)
+
+                    preds, _ = self.model(x_batch, t_span, exog=exog_x_batch)
+
+                    calib_preds.append(preds.cpu().numpy())
+                    calib_targets.append(y_batch.cpu().numpy())
+
+            calib_preds = np.concatenate(calib_preds, axis=0)
+            calib_targets = np.concatenate(calib_targets, axis=0)
+
+            # Denormalize for conformal predictor
+            calib_preds_denorm = calib_preds * self.scaler_std_ + self.scaler_mean_
+            calib_targets_denorm = calib_targets * self.scaler_std_ + self.scaler_mean_
+
+            # Initialize conformal predictor with identity function
+            # (we already have predictions, so predict_fn just returns input)
+            identity_fn = lambda x: x
+
+            if self.conformal_method == 'split':
+                self.conformal_predictor = SplitConformalPredictor(
+                    predict_fn=identity_fn,
+                    alpha=0.05
+                )
+            else:  # adaptive
+                self.conformal_predictor = AdaptiveConformalPredictor(
+                    predict_fn=identity_fn,
+                    alpha=0.05
+                )
+
+            # Calibrate with predictions as X and targets as y
+            self.conformal_predictor.calibrate(
+                calib_preds_denorm.reshape(-1, 1),
+                calib_targets_denorm.reshape(-1, 1)
+            )
+
+            if self.verbose:
+                print("Conformal predictor calibrated!")
+
         return self
 
     def predict(
@@ -937,6 +995,19 @@ class APDTFlowForecaster:
         if not self._is_fitted:
             raise RuntimeError("Cannot save unfitted model. Call fit() first.")
 
+        # Save conformal state separately (can't pickle lambda function)
+        conformal_state = None
+        if self.conformal_predictor is not None:
+            conformal_state = {
+                'alpha': self.conformal_predictor.alpha,
+                'nonconformity_scores': self.conformal_predictor.nonconformity_scores,
+                'quantile': self.conformal_predictor.quantile,
+                'is_calibrated': self.conformal_predictor.is_calibrated,
+            }
+            # For adaptive, save additional state
+            if self.conformal_method == 'adaptive' and hasattr(self.conformal_predictor, 'adaptive_quantile'):
+                conformal_state['adaptive_quantile'] = self.conformal_predictor.adaptive_quantile
+
         # Prepare state dict
         state = {
             # Model parameters
@@ -970,8 +1041,8 @@ class APDTFlowForecaster:
             'exog_std': self.exog_std_,
             'has_exog': self.has_exog_,
 
-            # Conformal predictor
-            'conformal_predictor': self.conformal_predictor,
+            # Conformal predictor state
+            'conformal_state': conformal_state,
         }
 
         with open(filepath, 'wb') as f:
@@ -1041,8 +1112,33 @@ class APDTFlowForecaster:
         model.exog_std_ = state['exog_std']
         model.has_exog_ = state['has_exog']
 
-        # Restore conformal predictor
-        model.conformal_predictor = state.get('conformal_predictor', None)
+        # Restore conformal predictor from saved state
+        conformal_state = state.get('conformal_state', None)
+        if conformal_state and model.use_conformal:
+            # Reconstruct conformal predictor with identity function
+            identity_fn = lambda x: x
+
+            if model.conformal_method == 'split':
+                model.conformal_predictor = SplitConformalPredictor(
+                    predict_fn=identity_fn,
+                    alpha=conformal_state['alpha']
+                )
+            else:  # adaptive
+                model.conformal_predictor = AdaptiveConformalPredictor(
+                    predict_fn=identity_fn,
+                    alpha=conformal_state['alpha']
+                )
+
+            # Restore calibrated state
+            model.conformal_predictor.nonconformity_scores = conformal_state['nonconformity_scores']
+            model.conformal_predictor.quantile = conformal_state['quantile']
+            model.conformal_predictor.is_calibrated = conformal_state['is_calibrated']
+
+            # Restore adaptive quantile for adaptive conformal
+            if 'adaptive_quantile' in conformal_state:
+                model.conformal_predictor.adaptive_quantile = conformal_state['adaptive_quantile']
+        else:
+            model.conformal_predictor = None
 
         # Initialize and load model
         model.model = model._initialize_model()

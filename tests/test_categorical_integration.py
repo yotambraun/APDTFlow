@@ -17,7 +17,7 @@ class TestCategoricalIntegration:
     def sample_data_with_categorical(self):
         """Create sample data with categorical features."""
         np.random.seed(42)
-        n_samples = 100
+        n_samples = 200
 
         dates = pd.date_range('2024-01-01', periods=n_samples, freq='D')
 
@@ -272,8 +272,8 @@ class TestCategoricalIntegration:
 
     def test_score_with_categorical(self, sample_data_with_categorical):
         """Test scoring with categorical features."""
-        train_df = sample_data_with_categorical.iloc[:80]
-        test_df = sample_data_with_categorical.iloc[80:]
+        train_df = sample_data_with_categorical.iloc[:150]
+        test_df = sample_data_with_categorical.iloc[150:]
 
         model = APDTFlowForecaster(
             forecast_horizon=7,

@@ -2059,7 +2059,7 @@ class APDTFlowForecaster:
             )
 
         # Basic statistics
-        diagnostics = {
+        diagnostics: Dict[str, Union[int, float, None]] = {
             'n_samples': len(residuals),
             'mean': float(np.mean(residuals)),
             'std': float(np.std(residuals)),

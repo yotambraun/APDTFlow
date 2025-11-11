@@ -15,6 +15,7 @@ from .models.transformer_forecaster import TransformerForecaster
 from .models.tcn_forecaster import TCNForecaster
 from .models.ensemble_forecaster import EnsembleForecaster
 from .conformal import SplitConformalPredictor, AdaptiveConformalPredictor
+from .preprocessing.categorical_encoder import CategoricalEncoder
 
 
 class APDTFlowForecaster:
@@ -92,7 +93,9 @@ class APDTFlowForecaster:
         # NEW: Early stopping
         early_stopping: bool = False,
         patience: int = 5,
-        validation_split: float = 0.2
+        validation_split: float = 0.2,
+        # NEW: Categorical variables support
+        categorical_encoding: str = 'onehot'
     ):
         self.model_type = model_type
         self.num_scales = num_scales
@@ -120,6 +123,12 @@ class APDTFlowForecaster:
         self.exog_std_: Optional[np.ndarray] = None
         self.has_exog_ = False
 
+        # Categorical variables (NEW in v0.2.3)
+        self.categorical_encoding = categorical_encoding
+        self.categorical_cols_: Optional[List[str]] = None
+        self.categorical_encoder_: Optional['CategoricalEncoder'] = None
+        self.has_categorical_ = False
+
         # Conformal prediction (NEW)
         self.use_conformal = use_conformal
         self.conformal_method = conformal_method
@@ -144,6 +153,11 @@ class APDTFlowForecaster:
         self.target_col_: Optional[str] = None
         self.date_col_: Optional[str] = None
         self.data_df_: Optional[pd.DataFrame] = None
+
+        # Residual analysis (NEW in v0.3.0)
+        self.residuals_: Optional[np.ndarray] = None
+        self.residual_actuals_: Optional[np.ndarray] = None
+        self.residual_predictions_: Optional[np.ndarray] = None
 
     def _initialize_model(self):
         """Initialize the forecasting model based on model_type."""
@@ -216,7 +230,8 @@ class APDTFlowForecaster:
         data: Union[pd.DataFrame, np.ndarray],
         target_col: Optional[str] = None,
         date_col: Optional[str] = None,
-        exog_cols: Optional[List[str]] = None
+        exog_cols: Optional[List[str]] = None,
+        categorical_cols: Optional[List[str]] = None
     ):
         """
         Validate input data and provide helpful error messages.
@@ -262,6 +277,16 @@ class APDTFlowForecaster:
                     available = ", ".join(data.columns.tolist())
                     raise ValueError(
                         f"Exogenous columns not found: {missing_exog}\n"
+                        f"Available columns: [{available}]"
+                    )
+
+            # Check categorical columns exist
+            if categorical_cols:
+                missing_cat = [col for col in categorical_cols if col not in data.columns]
+                if missing_cat:
+                    available = ", ".join(data.columns.tolist())
+                    raise ValueError(
+                        f"Categorical columns not found: {missing_cat}\n"
                         f"Available columns: [{available}]"
                     )
 
@@ -353,8 +378,17 @@ class APDTFlowForecaster:
                 data = data.sort_values(date_col)
             series = data[target_col].values
 
-            # Handle exogenous variables
-            if self.has_exog_ and self.exog_cols_:
+            # Handle exogenous variables (including categorical)
+            if hasattr(self, '_has_combined_exog') and self._has_combined_exog:
+                # Use combined numerical + categorical features
+                exog_data = self._combined_exog_data
+                # Normalize exog data
+                self.exog_mean_ = np.mean(exog_data, axis=0)
+                self.exog_std_ = np.std(exog_data, axis=0)
+                self.exog_std_[self.exog_std_ == 0] = 1.0
+                exog_norm = (exog_data - self.exog_mean_) / self.exog_std_
+            elif self.has_exog_ and self.exog_cols_:
+                # Only numerical exog features
                 exog_data = data[self.exog_cols_].values
                 # Normalize exog data
                 self.exog_mean_ = np.mean(exog_data, axis=0)
@@ -414,7 +448,9 @@ class APDTFlowForecaster:
         target_col: Optional[str] = None,
         date_col: Optional[str] = None,
         exog_cols: Optional[List[str]] = None,
-        future_exog_cols: Optional[List[str]] = None
+        future_exog_cols: Optional[List[str]] = None,
+        categorical_cols: Optional[List[str]] = None,
+        future_categorical_cols: Optional[List[str]] = None
     ):
         """
         Fit the forecasting model.
@@ -428,9 +464,13 @@ class APDTFlowForecaster:
         date_col : str, optional
             Name of date column if data is DataFrame
         exog_cols : list of str, optional
-            Names of exogenous variable columns (NEW in v0.2.0)
+            Names of numerical exogenous variable columns (NEW in v0.2.0)
         future_exog_cols : list of str, optional
             Subset of exog_cols that are known in future (NEW in v0.2.0)
+        categorical_cols : list of str, optional
+            Names of categorical variable columns (NEW in v0.2.3)
+        future_categorical_cols : list of str, optional
+            Subset of categorical_cols that are known in future (NEW in v0.2.3)
 
         Returns
         -------
@@ -449,13 +489,62 @@ class APDTFlowForecaster:
             )
 
         # Validate data before proceeding
-        self._validate_data(data, target_col, date_col, exog_cols)
+        self._validate_data(data, target_col, date_col, exog_cols, categorical_cols)
 
         # Store column names
         self.target_col_ = target_col
         self.date_col_ = date_col
         self.exog_cols_ = exog_cols
         self.future_exog_cols_ = future_exog_cols
+        self.categorical_cols_ = categorical_cols
+
+        # Handle categorical variables (NEW in v0.2.3)
+        if categorical_cols:
+            if self.model_type != 'apdtflow':
+                raise ValueError(
+                    f"Categorical variables are only supported with model_type='apdtflow'. "
+                    f"Current model_type='{self.model_type}' does not support categorical_cols."
+                )
+
+            if not isinstance(data, pd.DataFrame):
+                raise ValueError("categorical_cols requires DataFrame input")
+
+            self.has_categorical_ = True
+
+            # Create and fit categorical encoder
+            self.categorical_encoder_ = CategoricalEncoder(
+                encoding_type=self.categorical_encoding,
+                embedding_dim=8,
+                handle_unknown='indicator'
+            )
+
+            categorical_data = data[categorical_cols]
+            self.categorical_encoder_.fit(categorical_data)
+
+            # Encode categorical features
+            categorical_encoded = self.categorical_encoder_.transform(categorical_data)
+            num_categorical_features = categorical_encoded.shape[1]
+
+            if self.verbose:
+                print(f"Encoded {len(categorical_cols)} categorical columns into {num_categorical_features} features")
+                print(f"  Categorical columns: {categorical_cols}")
+                print(f"  Encoding: {self.categorical_encoding}")
+
+            # Add encoded categorical features to exog features
+            if exog_cols:
+                # Combine numerical exog with encoded categorical
+                exog_data = data[exog_cols].values
+                combined_exog = np.concatenate([exog_data, categorical_encoded], axis=1)
+
+                # Update DataFrame with combined features
+                # We'll handle this in _prepare_data by passing combined
+                self._combined_exog_data = combined_exog
+                self._has_combined_exog = True
+            else:
+                # Only categorical features (treat as exog)
+                self._combined_exog_data = categorical_encoded
+                self._has_combined_exog = True
+                exog_cols = []  # Will use combined data instead
 
         # Check exogenous variables
         if exog_cols:
@@ -1073,6 +1162,269 @@ class APDTFlowForecaster:
         else:
             raise ValueError(f"Unknown metric: {metric}. Use 'mse', 'mae', 'rmse', 'mape', or 'r2'")
 
+    def historical_forecasts(
+        self,
+        data: Union[pd.DataFrame, np.ndarray],
+        target_col: Optional[str] = None,
+        date_col: Optional[str] = None,
+        start: Union[float, int] = 0.8,
+        forecast_horizon: Optional[int] = None,
+        stride: int = 1,
+        retrain: bool = False,
+        metrics: Optional[List[str]] = None,
+        exog_cols: Optional[List[str]] = None,
+        categorical_cols: Optional[List[str]] = None
+    ) -> pd.DataFrame:
+        """
+        Backtest model by generating historical forecasts.
+
+        Simulates production forecasting
+        by making predictions on historical data using a rolling window.
+
+        NEW in v0.2.3!
+
+        Parameters
+        ----------
+        data : DataFrame or array
+            Full historical data
+        target_col : str, optional
+            Target column name (uses fitted target_col if None)
+        date_col : str, optional
+            Date column name (uses fitted date_col if None)
+        start : float or int, default=0.8
+            Where to start forecasting:
+            - If float (0-1): fraction of data (e.g., 0.8 = 80%)
+            - If int: index position
+        forecast_horizon : int, optional
+            Forecast horizon (uses fitted horizon if None)
+        stride : int, default=1
+            Step size between forecasts (1 = every timestep)
+        retrain : bool, default=False
+            Whether to retrain model at each step (slow but more realistic)
+        metrics : list of str, optional
+            Metrics to compute (default: ['mse', 'mae', 'mase', 'smape'])
+        exog_cols : list of str, optional
+            Exogenous columns (uses fitted exog_cols if None)
+        categorical_cols : list of str, optional
+            Categorical columns (uses fitted categorical_cols if None)
+
+        Returns
+        -------
+        results : DataFrame
+            Backtesting results with columns:
+            - timestamp: Forecast timestamp (if date_col provided)
+            - actual: True values
+            - predicted: Forecasted values
+            - forecast_step: Step ahead (1, 2, ..., forecast_horizon)
+            - fold: Forecast fold number
+            - error: Prediction error (actual - predicted)
+            - abs_error: Absolute error
+            + any requested metrics
+
+        Examples
+        --------
+        >>> # Backtest starting at 80% of data
+        >>> results = model.historical_forecasts(
+        ...     df,
+        ...     target_col='sales',
+        ...     start=0.8,
+        ...     stride=7  # Weekly forecasts
+        ... )
+        >>> print(f"Average MAE: {results['abs_error'].mean():.2f}")
+
+        >>> # With retraining (slower but more realistic)
+        >>> results = model.historical_forecasts(
+        ...     df,
+        ...     target_col='sales',
+        ...     retrain=True,
+        ...     stride=7
+        ... )
+
+        Notes
+        -----
+        - Set stride=forecast_horizon for non-overlapping forecasts
+        - retrain=True is more realistic but much slower
+        - Useful for validating model before production deployment
+        """
+        if not self._is_fitted and not retrain:
+            raise RuntimeError("Model must be fitted before backtesting (or use retrain=True)")
+
+        # Use defaults from fitted model
+        if target_col is None:
+            target_col = self.target_col_
+        if date_col is None:
+            date_col = self.date_col_
+        if forecast_horizon is None:
+            forecast_horizon = self.forecast_horizon
+        if exog_cols is None:
+            exog_cols = self.exog_cols_
+        if categorical_cols is None:
+            categorical_cols = self.categorical_cols_
+        if metrics is None:
+            metrics = ['mse', 'mae', 'mase', 'smape']
+
+        # Validate data
+        if isinstance(data, pd.DataFrame):
+            if target_col is None:
+                raise ValueError("target_col must be specified")
+            if date_col and date_col in data.columns:
+                data = data.sort_values(date_col).reset_index(drop=True)
+
+            series = data[target_col].values
+            dates = data[date_col].values if date_col and date_col in data.columns else None
+        else:
+            series = np.array(data).flatten()
+            dates = None
+
+        # Determine start index
+        if isinstance(start, float):
+            start_idx = int(len(series) * start)
+        else:
+            start_idx = start
+
+        # Ensure we have enough data
+        min_required = start_idx + self.history_length + forecast_horizon
+        if len(series) < min_required:
+            raise ValueError(
+                f"Not enough data for backtesting. Need {min_required} points, "
+                f"got {len(series)}"
+            )
+
+        # Generate forecasts
+        results_list = []
+        fold = 0
+
+        for i in range(start_idx, len(series) - forecast_horizon + 1, stride):
+            # Training data up to i
+            train_data_slice = data.iloc[:i] if isinstance(data, pd.DataFrame) else series[:i]
+
+            # Test data (next forecast_horizon points)
+            actual_values = series[i:i + forecast_horizon]
+
+            if retrain:
+                # Retrain model on expanding window
+                temp_model = APDTFlowForecaster(
+                    model_type=self.model_type,
+                    forecast_horizon=forecast_horizon,
+                    history_length=self.history_length,
+                    num_epochs=self.num_epochs,
+                    verbose=False
+                )
+                try:
+                    temp_model.fit(
+                        train_data_slice,
+                        target_col=target_col,
+                        date_col=date_col,
+                        exog_cols=exog_cols,
+                        categorical_cols=categorical_cols
+                    )
+                    predictions = temp_model.predict(steps=forecast_horizon)
+                except Exception as e:
+                    if self.verbose:
+                        print(f"Skipping fold {fold} due to error: {e}")
+                    continue
+            else:
+                # Use pre-trained model
+                # Need to update last_sequence with data up to i
+                window = series[i - self.history_length:i]
+                window_norm = (window - self.scaler_mean_) / self.scaler_std_
+
+                # Store original last_sequence
+                original_last_seq = self.last_sequence_.copy()
+
+                # Temporarily update
+                self.last_sequence_ = window_norm
+
+                try:
+                    predictions = self.predict(steps=forecast_horizon)
+                except Exception as e:
+                    if self.verbose:
+                        print(f"Skipping fold {fold} due to error: {e}")
+                    # Restore original
+                    self.last_sequence_ = original_last_seq
+                    continue
+
+                # Restore original last_sequence
+                self.last_sequence_ = original_last_seq
+
+            # Store results for each forecast step
+            for step in range(forecast_horizon):
+                if i + step < len(series):
+                    result_row = {
+                        'fold': fold,
+                        'forecast_step': step + 1,
+                        'actual': actual_values[step],
+                        'predicted': predictions[step],
+                        'error': actual_values[step] - predictions[step],
+                        'abs_error': np.abs(actual_values[step] - predictions[step])
+                    }
+
+                    # Add timestamp if available
+                    if dates is not None and i + step < len(dates):
+                        result_row['timestamp'] = dates[i + step]
+
+                    results_list.append(result_row)
+
+            fold += 1
+
+        # Convert to DataFrame
+        results_df = pd.DataFrame(results_list)
+
+        if len(results_df) == 0:
+            raise ValueError("No forecasts generated. Check your data and parameters.")
+
+        # Calculate aggregate metrics
+        if metrics:
+            metric_results = {}
+            for metric in metrics:
+                try:
+                    if metric.lower() == 'mse':
+                        metric_results[metric] = np.mean(results_df['error'] ** 2)
+                    elif metric.lower() == 'mae':
+                        metric_results[metric] = np.mean(results_df['abs_error'])
+                    elif metric.lower() == 'rmse':
+                        metric_results[metric] = np.sqrt(np.mean(results_df['error'] ** 2))
+                    elif metric.lower() == 'mape':
+                        metric_results[metric] = np.mean(
+                            np.abs(results_df['error'] / results_df['actual'])
+                        ) * 100
+                    elif metric.lower() == 'mase':
+                        # Simplified MASE for backtesting
+                        naive_errors = np.diff(series[start_idx:])
+                        mae_naive = np.mean(np.abs(naive_errors))
+                        mae_pred = np.mean(results_df['abs_error'])
+                        metric_results[metric] = mae_pred / mae_naive if mae_naive > 0 else np.inf
+                    elif metric.lower() == 'smape':
+                        numerator = results_df['abs_error']
+                        denominator = (np.abs(results_df['predicted']) + np.abs(results_df['actual'])) / 2
+                        metric_results[metric] = np.mean(numerator / denominator) * 100
+                except Exception as e:
+                    if self.verbose:
+                        print(f"Could not compute {metric}: {e}")
+
+            # Print summary
+            if self.verbose:
+                print("\n" + "="*60)
+                print("Historical Forecasts Summary")
+                print("="*60)
+                print(f"Total forecasts: {fold}")
+                print(f"Total predictions: {len(results_df)}")
+                print(f"Forecast horizon: {forecast_horizon}")
+                print(f"Stride: {stride}")
+                print("\nMetrics:")
+                for metric, value in metric_results.items():
+                    print(f"  {metric}: {value:.4f}")
+                print("="*60 + "\n")
+
+        # Reorder columns for better readability
+        column_order = []
+        if 'timestamp' in results_df.columns:
+            column_order.append('timestamp')
+        column_order.extend(['fold', 'forecast_step', 'actual', 'predicted', 'error', 'abs_error'])
+        results_df = results_df[column_order]
+
+        return results_df
+
     def save(self, filepath: str):
         """
         Save the fitted model to disk.
@@ -1138,6 +1490,12 @@ class APDTFlowForecaster:
             'exog_std': self.exog_std_,
             'has_exog': self.has_exog_,
 
+            # Categorical variables state (NEW in v0.2.3)
+            'categorical_encoding': self.categorical_encoding,
+            'categorical_cols': self.categorical_cols_,
+            'has_categorical': self.has_categorical_,
+            'categorical_encoder_config': self.categorical_encoder_.get_config() if self.categorical_encoder_ else None,
+
             # Conformal predictor state
             'conformal_state': conformal_state,
         }
@@ -1192,6 +1550,7 @@ class APDTFlowForecaster:
             use_conformal=state['use_conformal'],
             conformal_method=state['conformal_method'],
             calibration_split=state['calibration_split'],
+            categorical_encoding=state.get('categorical_encoding', 'onehot'),
             verbose=False
         )
 
@@ -1237,6 +1596,17 @@ class APDTFlowForecaster:
                 model.conformal_predictor.adaptive_quantile = conformal_state['adaptive_quantile']  # type: ignore[attr-defined]
         else:
             model.conformal_predictor = None
+
+        # Restore categorical encoder from saved state (NEW in v0.2.3)
+        categorical_encoder_config = state.get('categorical_encoder_config', None)
+        if categorical_encoder_config:
+            model.categorical_encoder_ = CategoricalEncoder.from_config(categorical_encoder_config)
+            model.categorical_cols_ = state.get('categorical_cols', None)
+            model.has_categorical_ = state.get('has_categorical', False)
+        else:
+            model.categorical_encoder_ = None
+            model.categorical_cols_ = None
+            model.has_categorical_ = False
 
         # Initialize and load model
         model.model = model._initialize_model()
@@ -1311,4 +1681,490 @@ class APDTFlowForecaster:
                 print(f"  Data Mean:           {self.scaler_mean_:.4f}")
                 print(f"  Data Std:            {self.scaler_std_:.4f}")
 
+        # Residual diagnostics
+        if self.residuals_ is not None:
+            print("\nResidual Diagnostics:")
+            print(f"  Mean Residual:       {np.mean(self.residuals_):.4f}")
+            print(f"  Std Residual:        {np.std(self.residuals_):.4f}")
+            print(f"  MAE:                 {np.mean(np.abs(self.residuals_)):.4f}")
+
         print("=" * 70)
+
+    def compute_residuals(
+        self,
+        data: Union[pd.DataFrame, np.ndarray],
+        target_col: Optional[str] = None,
+        date_col: Optional[str] = None,
+        exog_cols: Optional[List[str]] = None,
+        n_windows: int = 100
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Compute residuals (actual - predicted) for model diagnostics.
+
+        Uses rolling window validation to generate predictions on historical data
+        and compute residuals for analysis.
+
+        NEW in v0.3.0!
+
+        Parameters
+        ----------
+        data : DataFrame or array
+            Data to compute residuals on (typically validation/test set)
+        target_col : str, optional
+            Name of target column if data is DataFrame
+        date_col : str, optional
+            Name of date column if data is DataFrame
+        exog_cols : list of str, optional
+            Exogenous column names
+        n_windows : int, default=100
+            Number of rolling windows to use (more windows = more residuals but slower)
+
+        Returns
+        -------
+        residuals : array
+            Residuals (actual - predicted)
+        actuals : array
+            Actual values
+        predictions : array
+            Predicted values
+
+        Examples
+        --------
+        >>> model.fit(train_df, target_col='sales', date_col='date')
+        >>> residuals, actuals, predictions = model.compute_residuals(test_df)
+        >>> print(f"Mean residual: {np.mean(residuals):.4f}")
+        """
+        if not self._is_fitted:
+            raise RuntimeError("Model must be fitted before computing residuals")
+
+        # Use fitted columns if not provided
+        if target_col is None:
+            target_col = self.target_col_
+        if date_col is None:
+            date_col = self.date_col_
+        if exog_cols is None:
+            exog_cols = self.exog_cols_
+
+        # Prepare data
+        if isinstance(data, pd.DataFrame):
+            if target_col is None:
+                raise ValueError("target_col must be specified")
+            if date_col and date_col in data.columns:
+                data = data.sort_values(date_col)
+            y_true = data[target_col].values
+
+            # Extract exog data if available
+            if self.has_exog_ and exog_cols:
+                exog_data_full = data[exog_cols].values
+            else:
+                exog_data_full = None
+        else:
+            y_true = np.array(data).flatten()
+            exog_data_full = None
+
+        # Make predictions using rolling windows
+        predictions_list = []
+        actuals_list = []
+        n_samples = len(y_true) - self.history_length - self.forecast_horizon + 1
+
+        # Sample windows evenly across the data
+        window_indices = np.linspace(0, max(n_samples - 1, 0), min(n_windows, n_samples), dtype=int)
+
+        for i in window_indices:
+            start = i
+            end = start + self.history_length
+            window = y_true[start:end]
+
+            # Normalize
+            window_norm = (window - self.scaler_mean_) / self.scaler_std_
+
+            # Prepare exog if available
+            exog_tensor = None
+            if self.has_exog_ and exog_data_full is not None:
+                exog_window = exog_data_full[start:end]
+                # Normalize using fitted parameters
+                exog_norm = (exog_window - self.exog_mean_) / self.exog_std_
+                exog_tensor = torch.tensor(
+                    exog_norm,
+                    dtype=torch.float32
+                ).T.unsqueeze(0).to(self.device)
+
+            # Predict
+            with torch.no_grad():
+                x = torch.tensor(
+                    window_norm,
+                    dtype=torch.float32
+                ).unsqueeze(0).unsqueeze(0).to(self.device)
+
+                t_span = torch.linspace(0, 1, steps=self.history_length, device=self.device)
+                assert self.model is not None, "Model must be initialized"
+                preds, _ = self.model(x, t_span, exog=exog_tensor)
+                pred_denorm = preds.cpu().numpy().flatten() * self.scaler_std_ + self.scaler_mean_
+
+            # Store predictions and actuals
+            actual_window = y_true[i + self.history_length:i + self.history_length + self.forecast_horizon]
+            predictions_list.append(pred_denorm[:len(actual_window)])
+            actuals_list.append(actual_window)
+
+        # Flatten arrays
+        if len(predictions_list) == 0:
+            raise ValueError(
+                f"Not enough data to compute residuals. "
+                f"Need at least {self.history_length + self.forecast_horizon} samples, "
+                f"but got {len(y_true)}."
+            )
+
+        predictions = np.concatenate(predictions_list)
+        actuals = np.concatenate(actuals_list)
+        residuals = actuals - predictions
+
+        # Store for later use
+        self.residuals_ = residuals
+        self.residual_actuals_ = actuals
+        self.residual_predictions_ = predictions
+
+        return residuals, actuals, predictions
+
+    def plot_residuals(
+        self,
+        data: Optional[Union[pd.DataFrame, np.ndarray]] = None,
+        target_col: Optional[str] = None,
+        date_col: Optional[str] = None,
+        exog_cols: Optional[List[str]] = None,
+        figsize: Tuple[int, int] = (14, 10),
+        save_path: Optional[str] = None
+    ):
+        """
+        Plot comprehensive residual diagnostics (4-panel plot).
+
+        Creates a 4-panel diagnostic plot:
+        1. Residuals over time
+        2. Residual distribution (histogram + KDE)
+        3. Autocorrelation Function (ACF)
+        4. Q-Q plot (normality test)
+
+        NEW in v0.3.0!
+
+        Parameters
+        ----------
+        data : DataFrame or array, optional
+            Data to compute residuals on. If None, uses stored residuals from compute_residuals()
+        target_col : str, optional
+            Name of target column if data is DataFrame
+        date_col : str, optional
+            Name of date column if data is DataFrame
+        exog_cols : list of str, optional
+            Exogenous column names
+        figsize : tuple, default=(14, 10)
+            Figure size (width, height)
+        save_path : str, optional
+            Path to save the plot
+
+        Examples
+        --------
+        >>> model.fit(train_df, target_col='sales')
+        >>> model.plot_residuals(test_df)  # Computes and plots residuals
+
+        >>> # Or compute first, then plot multiple times
+        >>> model.compute_residuals(test_df)
+        >>> model.plot_residuals()  # Uses stored residuals
+        """
+        import matplotlib.pyplot as plt
+        from scipy import stats
+
+        # Compute residuals if needed
+        if data is not None:
+            residuals, actuals, predictions = self.compute_residuals(
+                data, target_col, date_col, exog_cols
+            )
+        elif self.residuals_ is not None:
+            residuals = self.residuals_
+            actuals = self.residual_actuals_
+            predictions = self.residual_predictions_
+        else:
+            raise ValueError(
+                "No residuals available. Either provide data parameter or call compute_residuals() first."
+            )
+
+        # Create 2x2 subplot grid
+        fig, axes = plt.subplots(2, 2, figsize=figsize)
+        fig.suptitle(f'{self.model_type.upper()} - Residual Diagnostics', fontsize=16, y=0.995)
+
+        # 1. Residuals over time
+        ax1 = axes[0, 0]
+        ax1.plot(residuals, 'o-', alpha=0.6, markersize=3, linewidth=0.8)
+        ax1.axhline(y=0, color='r', linestyle='--', linewidth=2, label='Zero Line')
+        ax1.axhline(y=np.mean(residuals), color='g', linestyle=':', linewidth=2,
+                    label=f'Mean: {np.mean(residuals):.4f}')
+        ax1.fill_between(range(len(residuals)),
+                         -2 * np.std(residuals),
+                         2 * np.std(residuals),
+                         alpha=0.2, color='gray', label='±2 Std')
+        ax1.set_xlabel('Sample Index', fontsize=10)
+        ax1.set_ylabel('Residual', fontsize=10)
+        ax1.set_title('Residuals Over Time', fontsize=12, fontweight='bold')
+        ax1.legend(fontsize=8)
+        ax1.grid(alpha=0.3)
+
+        # 2. Residual distribution
+        ax2 = axes[0, 1]
+        ax2.hist(residuals, bins=30, density=True, alpha=0.7, color='steelblue', edgecolor='black')
+
+        # Fit normal distribution
+        mu, sigma = np.mean(residuals), np.std(residuals)
+        x = np.linspace(residuals.min(), residuals.max(), 100)
+        ax2.plot(x, stats.norm.pdf(x, mu, sigma), 'r-', linewidth=2,
+                 label=f'Normal(μ={mu:.2f}, σ={sigma:.2f})')
+
+        # KDE
+        try:
+            from scipy.stats import gaussian_kde
+            kde = gaussian_kde(residuals)
+            ax2.plot(x, kde(x), 'g--', linewidth=2, label='KDE')
+        except Exception:
+            pass  # Skip KDE if it fails
+
+        ax2.set_xlabel('Residual Value', fontsize=10)
+        ax2.set_ylabel('Density', fontsize=10)
+        ax2.set_title('Residual Distribution', fontsize=12, fontweight='bold')
+        ax2.legend(fontsize=8)
+        ax2.grid(alpha=0.3, axis='y')
+
+        # 3. ACF plot
+        ax3 = axes[1, 0]
+        try:
+            from statsmodels.graphics.tsaplots import plot_acf
+            max_lags = max(1, min(40, len(residuals) // 4))  # At least 1 lag
+            plot_acf(residuals, lags=max_lags, ax=ax3, alpha=0.05)
+            ax3.set_title('Autocorrelation Function (ACF)', fontsize=12, fontweight='bold')
+            ax3.set_xlabel('Lag', fontsize=10)
+            ax3.set_ylabel('ACF', fontsize=10)
+        except (ImportError, Exception) as e:
+            # Fallback: manual ACF computation
+            max_lag = max(1, min(40, len(residuals) // 4))  # At least 1 lag
+            acf_values = [1.0]
+
+            for lag in range(1, min(max_lag + 1, len(residuals))):
+                try:
+                    acf_val = np.corrcoef(residuals[:-lag], residuals[lag:])[0, 1]
+                    if np.isnan(acf_val):
+                        acf_val = 0.0
+                    acf_values.append(acf_val)
+                except (IndexError, ValueError):
+                    acf_values.append(0.0)
+
+            ax3.bar(range(len(acf_values)), acf_values, width=0.3, alpha=0.7, color='steelblue')
+            ax3.axhline(y=0, color='k', linestyle='-', linewidth=0.8)
+
+            # Confidence intervals
+            conf_int = 1.96 / np.sqrt(max(len(residuals), 1))  # Avoid division by zero
+            ax3.axhline(y=conf_int, color='b', linestyle='--', linewidth=1)
+            ax3.axhline(y=-conf_int, color='b', linestyle='--', linewidth=1)
+
+            ax3.set_title('Autocorrelation Function (ACF)', fontsize=12, fontweight='bold')
+            ax3.set_xlabel('Lag', fontsize=10)
+            ax3.set_ylabel('ACF', fontsize=10)
+            ax3.grid(alpha=0.3)
+
+        # 4. Q-Q plot
+        ax4 = axes[1, 1]
+        stats.probplot(residuals, dist="norm", plot=ax4)
+        ax4.set_title('Q-Q Plot (Normality Test)', fontsize=12, fontweight='bold')
+        ax4.set_xlabel('Theoretical Quantiles', fontsize=10)
+        ax4.set_ylabel('Sample Quantiles', fontsize=10)
+        ax4.grid(alpha=0.3)
+
+        # Add text box with statistics
+        stats_text = (
+            f"n = {len(residuals)}\n"
+            f"Mean = {np.mean(residuals):.4f}\n"
+            f"Std = {np.std(residuals):.4f}\n"
+            f"MAE = {np.mean(np.abs(residuals)):.4f}\n"
+            f"RMSE = {np.sqrt(np.mean(residuals**2)):.4f}"
+        )
+        ax4.text(0.05, 0.95, stats_text,
+                 transform=ax4.transAxes,
+                 fontsize=9,
+                 verticalalignment='top',
+                 bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+
+        plt.tight_layout()
+
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            if self.verbose:
+                print(f"Residual plot saved to {save_path}")
+
+        plt.show()
+
+        return fig, axes
+
+    def analyze_residuals(
+        self,
+        data: Optional[Union[pd.DataFrame, np.ndarray]] = None,
+        target_col: Optional[str] = None,
+        date_col: Optional[str] = None,
+        exog_cols: Optional[List[str]] = None
+    ) -> dict:
+        """
+        Perform statistical analysis of residuals.
+
+        Returns diagnostic statistics and test results to assess model fit quality.
+
+        NEW in v0.3.0!
+
+        Parameters
+        ----------
+        data : DataFrame or array, optional
+            Data to compute residuals on. If None, uses stored residuals
+        target_col : str, optional
+            Name of target column if data is DataFrame
+        date_col : str, optional
+            Name of date column if data is DataFrame
+        exog_cols : list of str, optional
+            Exogenous column names
+
+        Returns
+        -------
+        diagnostics : dict
+            Dictionary containing:
+            - 'mean': Mean residual (should be ~0)
+            - 'std': Standard deviation of residuals
+            - 'mae': Mean absolute error
+            - 'rmse': Root mean squared error
+            - 'skewness': Skewness (should be ~0 for normal)
+            - 'kurtosis': Kurtosis (should be ~3 for normal)
+            - 'ljung_box_stat': Ljung-Box statistic (autocorrelation test)
+            - 'ljung_box_pvalue': P-value for Ljung-Box test
+            - 'shapiro_stat': Shapiro-Wilk statistic (normality test)
+            - 'shapiro_pvalue': P-value for Shapiro-Wilk test
+            - 'n_samples': Number of residual samples
+
+        Examples
+        --------
+        >>> model.fit(train_df, target_col='sales')
+        >>> diagnostics = model.analyze_residuals(test_df)
+        >>> print(f"Mean residual: {diagnostics['mean']:.4f}")
+        >>> print(f"Normality test p-value: {diagnostics['shapiro_pvalue']:.4f}")
+        """
+        from scipy import stats
+
+        # Compute residuals if needed
+        if data is not None:
+            residuals, _, _ = self.compute_residuals(data, target_col, date_col, exog_cols)
+        elif self.residuals_ is not None:
+            residuals = self.residuals_
+        else:
+            raise ValueError(
+                "No residuals available. Either provide data parameter or call compute_residuals() first."
+            )
+
+        # Basic statistics
+        diagnostics = {
+            'n_samples': len(residuals),
+            'mean': float(np.mean(residuals)),
+            'std': float(np.std(residuals)),
+            'mae': float(np.mean(np.abs(residuals))),
+            'rmse': float(np.sqrt(np.mean(residuals ** 2))),
+            'min': float(np.min(residuals)),
+            'max': float(np.max(residuals)),
+            'skewness': float(stats.skew(residuals)),
+            'kurtosis': float(stats.kurtosis(residuals))
+        }
+
+        # Shapiro-Wilk test for normality (works for n < 5000)
+        if len(residuals) < 5000:
+            try:
+                shapiro_stat, shapiro_pval = stats.shapiro(residuals)
+                diagnostics['shapiro_stat'] = float(shapiro_stat)
+                diagnostics['shapiro_pvalue'] = float(shapiro_pval)
+            except Exception as e:
+                diagnostics['shapiro_stat'] = None
+                diagnostics['shapiro_pvalue'] = None
+                if self.verbose:
+                    print(f"Shapiro-Wilk test failed: {e}")
+        else:
+            # Use Kolmogorov-Smirnov test for larger samples
+            try:
+                ks_stat, ks_pval = stats.kstest(residuals, 'norm',
+                                                 args=(np.mean(residuals), np.std(residuals)))
+                diagnostics['ks_stat'] = float(ks_stat)
+                diagnostics['ks_pvalue'] = float(ks_pval)
+            except Exception:
+                pass
+
+        # Ljung-Box test for autocorrelation
+        try:
+            from statsmodels.stats.diagnostic import acorr_ljungbox
+            max_lags = max(1, min(10, len(residuals) // 4))  # At least 1 lag
+            lb_result = acorr_ljungbox(residuals, lags=[max_lags], return_df=False)
+            diagnostics['ljung_box_stat'] = float(lb_result[0][0])
+            diagnostics['ljung_box_pvalue'] = float(lb_result[1][0])
+        except (ImportError, Exception):
+            # Manual Ljung-Box if statsmodels not available or fails
+            try:
+                max_lag = max(1, min(10, len(residuals) // 4))  # At least 1 lag
+                n = len(residuals)
+                acf_vals = []
+
+                for lag in range(1, min(max_lag + 1, len(residuals))):
+                    try:
+                        acf_val = np.corrcoef(residuals[:-lag], residuals[lag:])[0, 1]
+                        if np.isnan(acf_val):
+                            acf_val = 0.0
+                        acf_vals.append(acf_val)
+                    except (IndexError, ValueError):
+                        acf_vals.append(0.0)
+
+                if len(acf_vals) > 0:
+                    lb_stat = n * (n + 2) * np.sum([(acf_vals[k] ** 2) / max(n - k - 1, 1)
+                                                     for k in range(len(acf_vals))])
+                    lb_pval = 1 - stats.chi2.cdf(lb_stat, len(acf_vals))
+
+                    diagnostics['ljung_box_stat'] = float(lb_stat)
+                    diagnostics['ljung_box_pvalue'] = float(lb_pval)
+                else:
+                    diagnostics['ljung_box_stat'] = None
+                    diagnostics['ljung_box_pvalue'] = None
+            except Exception:
+                diagnostics['ljung_box_stat'] = None
+                diagnostics['ljung_box_pvalue'] = None
+
+        # Print summary if verbose
+        if self.verbose:
+            print("\n" + "=" * 70)
+            print("RESIDUAL ANALYSIS")
+            print("=" * 70)
+            print(f"\nSample Size: {diagnostics['n_samples']}")
+            print(f"\nCentral Tendency:")
+            print(f"  Mean Residual:       {diagnostics['mean']:>10.4f}  (should be ≈0)")
+            print(f"  Std Residual:        {diagnostics['std']:>10.4f}")
+            print(f"  MAE:                 {diagnostics['mae']:>10.4f}")
+            print(f"  RMSE:                {diagnostics['rmse']:>10.4f}")
+
+            print(f"\nDistribution Shape:")
+            print(f"  Skewness:            {diagnostics['skewness']:>10.4f}  (0 = symmetric)")
+            print(f"  Kurtosis:            {diagnostics['kurtosis']:>10.4f}  (0 = normal)")
+
+            print(f"\nNormality Test:")
+            if 'shapiro_pvalue' in diagnostics and diagnostics['shapiro_pvalue'] is not None:
+                print(f"  Shapiro-Wilk p-val:  {diagnostics['shapiro_pvalue']:>10.4f}  "
+                      f"({'✓ Normal' if diagnostics['shapiro_pvalue'] > 0.05 else '✗ Non-normal'})")
+            elif 'ks_pvalue' in diagnostics:
+                print(f"  K-S p-val:           {diagnostics['ks_pvalue']:>10.4f}  "
+                      f"({'✓ Normal' if diagnostics['ks_pvalue'] > 0.05 else '✗ Non-normal'})")
+
+            print(f"\nAutocorrelation Test:")
+            if diagnostics['ljung_box_pvalue'] is not None:
+                print(f"  Ljung-Box p-val:     {diagnostics['ljung_box_pvalue']:>10.4f}  "
+                      f"({'✓ No autocorr' if diagnostics['ljung_box_pvalue'] > 0.05 else '✗ Autocorrelated'})")
+
+            print("\n" + "=" * 70)
+            print("\nInterpretation:")
+            print("  • Mean should be close to 0 (unbiased predictions)")
+            print("  • Skewness/Kurtosis should be close to 0 (normally distributed)")
+            print("  • Normality test p-value > 0.05 indicates normal residuals")
+            print("  • Ljung-Box p-value > 0.05 indicates no autocorrelation (good)")
+            print("=" * 70 + "\n")
+
+        return diagnostics

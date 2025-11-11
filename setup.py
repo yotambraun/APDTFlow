@@ -7,7 +7,7 @@ with open(os.path.join(this_directory, "README.md"), encoding="utf-8") as fh:
 
 setup(
     name="apdtflow",
-    version="0.2.2",
+    version="0.3.0",
     packages=find_packages(),
     install_requires=[
         "torch",
@@ -15,6 +15,7 @@ setup(
         "pandas",
         "numpy",
         "matplotlib",
+        "scipy",
         "tensorboard",
         "pyyaml",
         "scikit-learn",

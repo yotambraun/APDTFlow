@@ -122,6 +122,7 @@ class APDTFlowForecaster:
         self.exog_mean_: Optional[np.ndarray] = None
         self.exog_std_: Optional[np.ndarray] = None
         self.has_exog_ = False
+        self.has_numerical_exog_ = False  # Track if we have true numerical exog (vs just categorical)
 
         # Categorical variables (NEW in v0.2.3)
         self.categorical_encoding = categorical_encoding
@@ -542,6 +543,7 @@ class APDTFlowForecaster:
                 self._has_combined_exog = True
                 # Update num features to reflect combined numerical + categorical
                 self.has_exog_ = True
+                self.has_numerical_exog_ = True  # Track that we have true numerical exog
                 self.num_exog_features_ = combined_exog.shape[1]
                 if self.verbose:
                     print(f"Combined {len(exog_cols)} numerical + {num_categorical_features} categorical = {self.num_exog_features_} total exogenous features")
@@ -550,6 +552,7 @@ class APDTFlowForecaster:
                 self._combined_exog_data = categorical_encoded
                 self._has_combined_exog = True
                 self.has_exog_ = True
+                self.has_numerical_exog_ = False  # Only categorical, no numerical exog
                 self.num_exog_features_ = categorical_encoded.shape[1]
                 if self.verbose:
                     print(f"Using {self.num_exog_features_} categorical features as exogenous variables")
@@ -564,6 +567,7 @@ class APDTFlowForecaster:
                     f"Current model_type='{self.model_type}' does not support exog_cols."
                 )
             self.has_exog_ = True
+            self.has_numerical_exog_ = True  # True numerical exogenous variables
             self.num_exog_features_ = len(exog_cols)
             if self.verbose:
                 print(f"Using {self.num_exog_features_} exogenous features: {exog_cols}")
@@ -869,10 +873,11 @@ class APDTFlowForecaster:
             )
             steps = self.forecast_horizon
 
-        # Check exog requirements
-        if self.has_exog_ and exog_future is None:
+        # Check exog requirements - only require exog_future for numerical exog
+        # Categorical features can be auto-generated
+        if self.has_numerical_exog_ and exog_future is None:
             raise ValueError(
-                "Model was trained with exogenous variables. "
+                "Model was trained with numerical exogenous variables. "
                 "Please provide exog_future parameter for prediction."
             )
 
@@ -1500,6 +1505,7 @@ class APDTFlowForecaster:
             'exog_mean': self.exog_mean_,
             'exog_std': self.exog_std_,
             'has_exog': self.has_exog_,
+            'has_numerical_exog': self.has_numerical_exog_,
 
             # Categorical variables state (NEW in v0.2.3)
             'categorical_encoding': self.categorical_encoding,
@@ -1578,6 +1584,7 @@ class APDTFlowForecaster:
         model.exog_mean_ = state['exog_mean']
         model.exog_std_ = state['exog_std']
         model.has_exog_ = state['has_exog']
+        model.has_numerical_exog_ = state.get('has_numerical_exog', state['has_exog'])  # Backward compat
 
         # Restore conformal predictor from saved state
         conformal_state = state.get('conformal_state', None)

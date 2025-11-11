@@ -3,6 +3,7 @@ torchdiffeq
 pandas
 numpy
 matplotlib
+scipy
 tensorboard
 pyyaml
 scikit-learn

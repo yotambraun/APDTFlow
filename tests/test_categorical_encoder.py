@@ -18,7 +18,7 @@ class TestCategoricalEncoder:
             'size': ['S', 'M', 'L', 'M']
         })
 
-        encoder = CategoricalEncoder(encoding_type='onehot')
+        encoder = CategoricalEncoder(encoding_type='onehot', handle_unknown='error')
         encoded = encoder.fit_transform(data)
 
         # Check shape: 4 samples, 3 colors + 3 sizes = 6 features
@@ -165,7 +165,7 @@ class TestCategoricalEncoder:
             'size': ['S', 'M']
         })
 
-        encoder = CategoricalEncoder(encoding_type='onehot')
+        encoder = CategoricalEncoder(encoding_type='onehot', handle_unknown='error')
         encoder.fit(data)
 
         num_features = encoder.get_num_features()

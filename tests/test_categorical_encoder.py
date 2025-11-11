@@ -135,7 +135,7 @@ class TestCategoricalEncoder:
         })
 
         encoder = CategoricalEncoder(encoding_type='onehot')
-        encoded = encoder.fit_transform(data)
+        _ = encoder.fit_transform(data)
 
         # Check that we get features from all columns
         feature_names = encoder.get_feature_names()

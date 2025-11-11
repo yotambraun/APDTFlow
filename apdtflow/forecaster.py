@@ -1874,13 +1874,11 @@ class APDTFlowForecaster:
 
         # Compute residuals if needed
         if data is not None:
-            residuals, actuals, predictions = self.compute_residuals(
+            residuals, _, _ = self.compute_residuals(
                 data, target_col, date_col, exog_cols
             )
         elif self.residuals_ is not None:
             residuals = self.residuals_
-            actuals = self.residual_actuals_
-            predictions = self.residual_predictions_
         else:
             raise ValueError(
                 "No residuals available. Either provide data parameter or call compute_residuals() first."
@@ -1939,7 +1937,7 @@ class APDTFlowForecaster:
             ax3.set_title('Autocorrelation Function (ACF)', fontsize=12, fontweight='bold')
             ax3.set_xlabel('Lag', fontsize=10)
             ax3.set_ylabel('ACF', fontsize=10)
-        except (ImportError, Exception) as e:
+        except (ImportError, Exception):
             # Fallback: manual ACF computation
             max_lag = max(1, min(40, len(residuals) // 4))  # At least 1 lag
             acf_values = [1.0]
@@ -2086,8 +2084,9 @@ class APDTFlowForecaster:
         else:
             # Use Kolmogorov-Smirnov test for larger samples
             try:
-                ks_stat, ks_pval = stats.kstest(residuals, 'norm',
-                                                 args=(np.mean(residuals), np.std(residuals)))
+                ks_stat, ks_pval = stats.kstest(
+                    residuals, 'norm',
+                    args=(np.mean(residuals), np.std(residuals)))
                 diagnostics['ks_stat'] = float(ks_stat)
                 diagnostics['ks_pvalue'] = float(ks_pval)
             except Exception:
@@ -2117,8 +2116,9 @@ class APDTFlowForecaster:
                         acf_vals.append(0.0)
 
                 if len(acf_vals) > 0:
-                    lb_stat = n * (n + 2) * np.sum([(acf_vals[k] ** 2) / max(n - k - 1, 1)
-                                                     for k in range(len(acf_vals))])
+                    lb_stat = n * (n + 2) * np.sum([
+                        (acf_vals[k] ** 2) / max(n - k - 1, 1)
+                        for k in range(len(acf_vals))])
                     lb_pval = 1 - stats.chi2.cdf(lb_stat, len(acf_vals))
 
                     diagnostics['ljung_box_stat'] = float(lb_stat)
@@ -2136,17 +2136,17 @@ class APDTFlowForecaster:
             print("RESIDUAL ANALYSIS")
             print("=" * 70)
             print(f"\nSample Size: {diagnostics['n_samples']}")
-            print(f"\nCentral Tendency:")
+            print("\nCentral Tendency:")
             print(f"  Mean Residual:       {diagnostics['mean']:>10.4f}  (should be ≈0)")
             print(f"  Std Residual:        {diagnostics['std']:>10.4f}")
             print(f"  MAE:                 {diagnostics['mae']:>10.4f}")
             print(f"  RMSE:                {diagnostics['rmse']:>10.4f}")
 
-            print(f"\nDistribution Shape:")
+            print("\nDistribution Shape:")
             print(f"  Skewness:            {diagnostics['skewness']:>10.4f}  (0 = symmetric)")
             print(f"  Kurtosis:            {diagnostics['kurtosis']:>10.4f}  (0 = normal)")
 
-            print(f"\nNormality Test:")
+            print("\nNormality Test:")
             if 'shapiro_pvalue' in diagnostics and diagnostics['shapiro_pvalue'] is not None:
                 print(f"  Shapiro-Wilk p-val:  {diagnostics['shapiro_pvalue']:>10.4f}  "
                       f"({'✓ Normal' if diagnostics['shapiro_pvalue'] > 0.05 else '✗ Non-normal'})")
@@ -2154,7 +2154,7 @@ class APDTFlowForecaster:
                 print(f"  K-S p-val:           {diagnostics['ks_pvalue']:>10.4f}  "
                       f"({'✓ Normal' if diagnostics['ks_pvalue'] > 0.05 else '✗ Non-normal'})")
 
-            print(f"\nAutocorrelation Test:")
+            print("\nAutocorrelation Test:")
             if diagnostics['ljung_box_pvalue'] is not None:
                 print(f"  Ljung-Box p-val:     {diagnostics['ljung_box_pvalue']:>10.4f}  "
                       f"({'✓ No autocorr' if diagnostics['ljung_box_pvalue'] > 0.05 else '✗ Autocorrelated'})")

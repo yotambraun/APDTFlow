@@ -2,12 +2,13 @@
 Comprehensive test suite for residual analysis functionality.
 Tests compute_residuals(), plot_residuals(), and analyze_residuals() methods.
 """
-import numpy as np
-import pytest
-import pandas as pd
 import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend for testing
-from apdtflow import APDTFlowForecaster
+
+import numpy as np  # noqa: E402
+import pytest  # noqa: E402
+import pandas as pd  # noqa: E402
+from apdtflow import APDTFlowForecaster  # noqa: E402
 
 
 class TestResidualAnalysis:

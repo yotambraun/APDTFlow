@@ -14,8 +14,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-from typing import List, Dict, Optional, Union, Tuple
-from collections import defaultdict
+from typing import List, Dict, Optional, Union
 
 
 class CategoricalEncoder:

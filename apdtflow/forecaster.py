@@ -1101,11 +1101,23 @@ class APDTFlowForecaster:
                 data = data.sort_values(date_col)
             y_true = data[target_col].values
 
-            # Extract exog data if available
-            if self.has_exog_ and exog_cols:
+            # Handle categorical features
+            exog_data_full = None
+            if self.has_categorical_ and self.categorical_encoder_ and self.categorical_cols_:
+                # Encode categorical features
+                categorical_data = data[self.categorical_cols_]
+                categorical_encoded = self.categorical_encoder_.transform(categorical_data)
+
+                # Combine with numerical exog if present
+                if exog_cols:
+                    exog_numerical = data[exog_cols].values
+                    exog_data_full = np.concatenate([exog_numerical, categorical_encoded], axis=1)
+                else:
+                    # Only categorical features
+                    exog_data_full = categorical_encoded
+            elif self.has_exog_ and exog_cols:
+                # Only numerical exog features
                 exog_data_full = data[exog_cols].values
-            else:
-                exog_data_full = None
         else:
             y_true = np.array(data).flatten()
             exog_data_full = None

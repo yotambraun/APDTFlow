@@ -162,7 +162,7 @@ class TestCategoricalEncoder:
         """Test getting number of features."""
         data = pd.DataFrame({
             'color': ['red', 'blue', 'green'],
-            'size': ['S', 'M']
+            'size': ['S', 'M', 'S']
         })
 
         encoder = CategoricalEncoder(encoding_type='onehot', handle_unknown='error')

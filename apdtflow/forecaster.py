@@ -2151,7 +2151,7 @@ class APDTFlowForecaster:
             if 'shapiro_pvalue' in diagnostics and diagnostics['shapiro_pvalue'] is not None:
                 print(f"  Shapiro-Wilk p-val:  {diagnostics['shapiro_pvalue']:>10.4f}  "
                       f"({'✓ Normal' if diagnostics['shapiro_pvalue'] > 0.05 else '✗ Non-normal'})")
-            elif 'ks_pvalue' in diagnostics:
+            elif 'ks_pvalue' in diagnostics and diagnostics['ks_pvalue'] is not None:
                 print(f"  K-S p-val:           {diagnostics['ks_pvalue']:>10.4f}  "
                       f"({'✓ Normal' if diagnostics['ks_pvalue'] > 0.05 else '✗ Non-normal'})")
 

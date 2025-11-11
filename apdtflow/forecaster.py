@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, TensorDataset
-from typing import Optional, Union, List, Tuple
+from typing import Optional, Union, List, Tuple, Dict
 import warnings
 from tqdm import tqdm
 
@@ -1330,6 +1330,7 @@ class APDTFlowForecaster:
                 window_norm = (window - self.scaler_mean_) / self.scaler_std_
 
                 # Store original last_sequence
+                assert self.last_sequence_ is not None, "last_sequence_ must be set"
                 original_last_seq = self.last_sequence_.copy()
 
                 # Temporarily update
@@ -2003,7 +2004,7 @@ class APDTFlowForecaster:
         target_col: Optional[str] = None,
         date_col: Optional[str] = None,
         exog_cols: Optional[List[str]] = None
-    ) -> dict:
+    ) -> Dict[str, Union[int, float, None]]:
         """
         Perform statistical analysis of residuals.
 

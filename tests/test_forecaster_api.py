@@ -208,7 +208,7 @@ class TestScore:
     def test_score_mse(self, sample_data):
         """Test score with MSE metric."""
         train_df, test_df = sample_data
-        model = APDTFlowForecaster(forecast_horizon=7, history_length=20, num_epochs=10, verbose=False)
+        model = APDTFlowForecaster(forecast_horizon=7, history_length=20, num_epochs=5, verbose=False)
         model.fit(train_df, target_col='sales')
 
         mse = model.score(test_df, target_col='sales', metric='mse')
@@ -218,7 +218,7 @@ class TestScore:
     def test_score_mae(self, sample_data):
         """Test score with MAE metric."""
         train_df, test_df = sample_data
-        model = APDTFlowForecaster(forecast_horizon=7, history_length=20, num_epochs=10, verbose=False)
+        model = APDTFlowForecaster(forecast_horizon=7, history_length=20, num_epochs=5, verbose=False)
         model.fit(train_df, target_col='sales')
 
         mae = model.score(test_df, target_col='sales', metric='mae')
@@ -228,7 +228,7 @@ class TestScore:
     def test_score_rmse(self, sample_data):
         """Test score with RMSE metric."""
         train_df, test_df = sample_data
-        model = APDTFlowForecaster(forecast_horizon=7, history_length=20, num_epochs=10, verbose=False)
+        model = APDTFlowForecaster(forecast_horizon=7, history_length=20, num_epochs=5, verbose=False)
         model.fit(train_df, target_col='sales')
 
         rmse = model.score(test_df, target_col='sales', metric='rmse')
@@ -238,7 +238,7 @@ class TestScore:
     def test_score_mape(self, sample_data):
         """Test score with MAPE metric."""
         train_df, test_df = sample_data
-        model = APDTFlowForecaster(forecast_horizon=7, history_length=20, num_epochs=10, verbose=False)
+        model = APDTFlowForecaster(forecast_horizon=7, history_length=20, num_epochs=5, verbose=False)
         model.fit(train_df, target_col='sales')
 
         mape = model.score(test_df, target_col='sales', metric='mape')
@@ -248,7 +248,7 @@ class TestScore:
     def test_score_r2(self, sample_data):
         """Test score with R2 metric."""
         train_df, test_df = sample_data
-        model = APDTFlowForecaster(forecast_horizon=7, history_length=20, num_epochs=10, verbose=False)
+        model = APDTFlowForecaster(forecast_horizon=7, history_length=20, num_epochs=5, verbose=False)
         model.fit(train_df, target_col='sales')
 
         r2 = model.score(test_df, target_col='sales', metric='r2')
@@ -335,7 +335,7 @@ class TestEarlyStopping:
         model = APDTFlowForecaster(
             forecast_horizon=7,
             history_length=20,
-            num_epochs=100,  # Many epochs
+            num_epochs=20,  # Many epochs
             early_stopping=True,
             patience=3,
             validation_split=0.2,

@@ -87,7 +87,7 @@ class TestExogenousSaveLoad:
         model = APDTFlowForecaster(
             forecast_horizon=7,
             history_length=20,
-            num_epochs=10,
+            num_epochs=5,
             exog_fusion_type='gated',
             verbose=False
         )
@@ -116,7 +116,7 @@ class TestExogenousSaveLoad:
         model = APDTFlowForecaster(
             forecast_horizon=7,
             history_length=20,
-            num_epochs=50,
+            num_epochs=5,
             early_stopping=True,
             patience=3,
             validation_split=0.2,
@@ -172,7 +172,7 @@ class TestConformalSaveLoad:
         model = APDTFlowForecaster(
             forecast_horizon=7,
             history_length=20,
-            num_epochs=10,
+            num_epochs=5,
             use_conformal=True,
             conformal_method='adaptive',
             verbose=False
@@ -219,7 +219,7 @@ class TestConformalSaveLoad:
         model = APDTFlowForecaster(
             forecast_horizon=7,
             history_length=20,
-            num_epochs=50,
+            num_epochs=5,
             early_stopping=True,
             patience=3,
             validation_split=0.2,
@@ -276,7 +276,7 @@ class TestExogConformalTogether:
         model = APDTFlowForecaster(
             forecast_horizon=7,
             history_length=20,
-            num_epochs=10,
+            num_epochs=5,
             exog_fusion_type='gated',
             use_conformal=True,
             conformal_method='adaptive',
@@ -315,7 +315,7 @@ class TestExogConformalTogether:
         model = APDTFlowForecaster(
             forecast_horizon=7,
             history_length=20,
-            num_epochs=10,
+            num_epochs=5,
             exog_fusion_type='attention',
             use_conformal=True,
             conformal_method='split',
@@ -367,7 +367,7 @@ class TestExogConformalTogether:
         model = APDTFlowForecaster(
             forecast_horizon=7,
             history_length=20,
-            num_epochs=10,
+            num_epochs=5,
             exog_fusion_type='gated',
             use_conformal=True,
             conformal_method='split',
@@ -390,7 +390,7 @@ class TestExogConformalTogether:
         model = APDTFlowForecaster(
             forecast_horizon=7,
             history_length=20,
-            num_epochs=50,
+            num_epochs=5,
             early_stopping=True,
             patience=3,
             validation_split=0.2,

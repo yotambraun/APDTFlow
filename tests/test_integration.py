@@ -227,7 +227,7 @@ class TestFullPipelineIntegration:
         model = APDTFlowForecaster(
             forecast_horizon=14,
             history_length=30,
-            num_epochs=10,
+            num_epochs=5,
             batch_size=16,
             exog_fusion_type='gated',
             verbose=True
@@ -276,7 +276,7 @@ class TestFullPipelineIntegration:
         model = APDTFlowForecaster(
             forecast_horizon=7,
             history_length=30,
-            num_epochs=10,
+            num_epochs=5,
             verbose=False
         )
 

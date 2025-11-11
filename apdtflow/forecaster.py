@@ -540,14 +540,24 @@ class APDTFlowForecaster:
                 # We'll handle this in _prepare_data by passing combined
                 self._combined_exog_data = combined_exog
                 self._has_combined_exog = True
+                # Update num features to reflect combined numerical + categorical
+                self.has_exog_ = True
+                self.num_exog_features_ = combined_exog.shape[1]
+                if self.verbose:
+                    print(f"Combined {len(exog_cols)} numerical + {num_categorical_features} categorical = {self.num_exog_features_} total exogenous features")
             else:
                 # Only categorical features (treat as exog)
                 self._combined_exog_data = categorical_encoded
                 self._has_combined_exog = True
+                self.has_exog_ = True
+                self.num_exog_features_ = categorical_encoded.shape[1]
+                if self.verbose:
+                    print(f"Using {self.num_exog_features_} categorical features as exogenous variables")
                 exog_cols = []  # Will use combined data instead
 
         # Check exogenous variables
-        if exog_cols:
+        if exog_cols and not hasattr(self, '_has_combined_exog'):
+            # Only set num_exog if not already set by categorical encoding above
             if self.model_type != 'apdtflow':
                 raise ValueError(
                     f"Exogenous variables are only supported with model_type='apdtflow'. "

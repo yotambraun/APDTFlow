@@ -83,7 +83,25 @@ seen. Fleet-scale battery datasets (Stanford/MIT-Toyota 124-cell) are the roadma
 `python experiments/turbofan_when_demo.py` — sensor s11 indicator, threshold from
 training engines only, audit on unseen engines, horizon 40 cycles.
 
-<!--PENDING:fd001_results_section-->
+Measured 2026-06-12 — 40 unseen engines, 1,990 held-out windows, 271 real events,
+25 epochs:
+
+| Metric | APDTFlow | Linear | Persistence |
+|---|---|---|---|
+| Timing MAE, full event set (cycles) | **8.33** | 8.65 | 11.46 |
+| Timing MAE, matched subset (n=38) | **8.49** | 9.68 | — |
+| False alarms (1,719 no-crossing windows) | **0.64%** | — | — |
+| Catch rate | 26.6% | — | — |
+| 90%-window coverage | 40.3% | — | — |
+
+**Honest reading:** APDTFlow beats both baselines on timing — including on the
+matched subset where linear also produces an estimate — and its false-alarm rate is
+near zero, the property that matters most against alarm fatigue. The model is
+deliberately conservative (27% catch), and the calibrated windows under-cover on this
+audit (40% vs the 90% target): cross-engine transfer stretches the calibration
+beyond what the training engines support. Both numbers are printed by the script.
+
+![fd001](../assets/images/apdtflow_turbofan_when.png)
 
 ### 3.3 Multivariate sensor fusion, FD001
 

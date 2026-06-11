@@ -63,7 +63,7 @@ schedule = model.predict_when_fleet(assets,           # whole fleet -> ranked sc
 | Event-timing audit (real NASA data, held-out units) | APDTFlow | Linear extrap. | Persistence |
 |---|---|---|---|
 | Battery end-of-life, 3 cells leave-one-battery-out (timing MAE, measured cycles) | **8.3** (2.8 on the typical cell) | 9.7 | 15.4 |
-| Turbofan FD001, unseen engines | <!--PENDING:fd001_row--> | | |
+| Turbofan FD001, 40 unseen engines (timing MAE, cycles; 0.6% false alarms) | **8.3** | 8.7 | 11.5 |
 | Turbofan FD002, unseen engines, 6 operating regimes | <!--PENDING:fd002_row--> | | |
 
 <!--PENDING:coverage_sentence-->

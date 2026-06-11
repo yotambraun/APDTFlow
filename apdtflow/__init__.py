@@ -6,7 +6,8 @@ One trained model answers three questions: ``predict()`` (grid forecasts),
 """
 
 from .forecaster import APDTFlowForecaster
+from .utils import set_seed
 
 __version__ = "0.4.0"
 
-__all__ = ["APDTFlowForecaster", "__version__"]
+__all__ = ["APDTFlowForecaster", "set_seed", "__version__"]

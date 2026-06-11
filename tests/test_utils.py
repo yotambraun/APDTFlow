@@ -12,6 +12,7 @@ def test_checkpoint_save_load():
         hidden_dim=8,
         output_dim=1,
         forecast_horizon=3,
+        history_length=10,
     )
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
@@ -24,6 +25,7 @@ def test_checkpoint_save_load():
         hidden_dim=8,
         output_dim=1,
         forecast_horizon=3,
+        history_length=10,
     )
     new_optimizer = torch.optim.Adam(new_model.parameters(), lr=0.001)
     epoch_loaded = load_checkpoint(

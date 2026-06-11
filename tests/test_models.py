@@ -13,6 +13,7 @@ def test_apdtflow_forward():
         hidden_dim=16,
         output_dim=1,
         forecast_horizon=3,
+        history_length=30,
         use_embedding=True
     )
     preds, pred_logvars = model(dummy_input, t_span)

@@ -221,3 +221,49 @@ class TimeSeriesScaler:
             np.ndarray: Data in original scale.
         """
         return self.scaler.inverse_transform(data)
+
+
+def regime_normalize(df, op_cols, sensor_cols, stats=None):
+    """Per-regime z-normalization for multi-condition industrial data.
+
+    Sensors on equipment that operates under several distinct regimes
+    (e.g. flight conditions) jump with the regime; normalizing each sensor
+    within its regime removes the jumps so degradation trends become
+    comparable across conditions. Regimes are identified by rounding the
+    operating-setting columns and grouping identical settings.
+
+    Compute the statistics on TRAINING units only, then pass them back via
+    ``stats`` to transform validation/test data without leakage.
+
+    Args:
+        df (pd.DataFrame): Data containing ``op_cols`` and ``sensor_cols``.
+        op_cols (list of str): Operating-setting columns that define the
+            regime.
+        sensor_cols (list of str): Sensor columns to normalize per regime.
+        stats (dict, optional): Mapping ``regime_key -> (means, stds)``
+            previously returned by this function. When given, those
+            statistics are applied instead of being recomputed.
+
+    Returns:
+        Tuple ``(normalized_df, stats)`` — a copy of ``df`` with
+        ``sensor_cols`` normalized, and the per-regime statistics for reuse
+        on held-out data.
+    """
+    df = df.copy()
+    regime_key = df[op_cols].round(2).astype(str).agg("|".join, axis=1)
+    if stats is None:
+        stats = {}
+        for key, idx in df.groupby(regime_key).groups.items():
+            block = df.loc[idx, sensor_cols]
+            means = block.mean()
+            stds = block.std().replace(0, 1.0).fillna(1.0)
+            stats[key] = (means, stds)
+    for key, idx in df.groupby(regime_key).groups.items():
+        if key not in stats:
+            raise ValueError(
+                f"Regime {key!r} was not present in the training statistics; "
+                f"recompute stats on data covering all regimes."
+            )
+        means, stds = stats[key]
+        df.loc[idx, sensor_cols] = (df.loc[idx, sensor_cols] - means) / stds
+    return df, stats

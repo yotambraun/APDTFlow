@@ -34,6 +34,8 @@ def main(args):
         hidden_dim=args.hidden_dim,
         output_dim=1,
         forecast_horizon=args.T_out,
+        history_length=args.T_in,
+        ode_method=args.ode_method,
     )
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
@@ -51,9 +53,12 @@ def main(args):
             optimizer.zero_grad()
             preds, pred_logvars = model(x_batch, t_span)
             mse = (preds - y_batch.transpose(1, 2)) ** 2
-            loss = torch.mean(
-                0.5 * (mse / (pred_logvars.exp() + 1e-6)) + 0.5 * pred_logvars
-            )
+            if args.loss_type == "nll":
+                loss = torch.mean(
+                    0.5 * (mse / (pred_logvars.exp() + 1e-6)) + 0.5 * pred_logvars
+                )
+            else:
+                loss = mse.mean()
             loss.backward()
             optimizer.step()
             epoch_loss += loss.item() * batch_size
@@ -123,6 +128,18 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--tensorboard", action="store_true", help="Enable TensorBoard logging."
+    )
+    parser.add_argument(
+        "--loss_type",
+        choices=["mse", "nll"],
+        default="mse",
+        help="Training loss: mse (default) or Gaussian nll.",
+    )
+    parser.add_argument(
+        "--ode_method",
+        choices=["rk4", "dopri5_adjoint"],
+        default="rk4",
+        help="ODE solver method.",
     )
     args = parser.parse_args()
 

@@ -1,2 +1,3 @@
 include README.md
-include apdtflow/config/sample_config.yaml
+include LICENSE
+include apdtflow/config/config.yaml

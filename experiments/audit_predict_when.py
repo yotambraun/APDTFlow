@@ -176,7 +176,7 @@ def main():
         parser.error("--season must be <= --history (the seasonal-naive "
                      "baseline reads one season from the input window)")
 
-    print(f"Series: {csv_path.name} [{args.value_col}] — {n} points, "
+    print(f"Series: {csv_path.name} [{args.value_col}] - {n} points, "
           f"train on first {split}, audit on the rest "
           f"(threshold {args.threshold} {args.direction})")
 
@@ -269,7 +269,7 @@ def main():
 
     # ---- table -------------------------------------------------------------
     print("\n" + "=" * 86)
-    print(f"predict_when audit — {csv_path.name}, threshold "
+    print(f"predict_when audit - {csv_path.name}, threshold "
           f"{args.threshold} {args.direction}, horizon {args.horizon}, "
           f"alpha {args.alpha}")
     print("=" * 86)
@@ -284,7 +284,7 @@ def main():
               f"{s['timing_mae']:>12.2f}"
               f"{s['false_alarms']:>10d}"
               f"{100 * s['false_alarm_rate']:>7.1f}%"
-              + (f"{100 * cov:>9.1f}%" if cov is not None else f"{'—':>10s}"))
+              + (f"{100 * cov:>9.1f}%" if cov is not None else f"{'n/a':>10s}"))
     print("-" * len(header))
     if matched_stats:
         print(f"matched subset (n={matched_stats['n']}): model MAE "
@@ -308,8 +308,8 @@ def main():
                   f"{100 * s['catch_rate']:.0f}%, timing MAE "
                   f"{model_s['timing_mae']:.2f} vs {s['timing_mae']:.2f})")
     print("SHIPPING-RULE VERDICT: "
-          + ("PASS — publishable as a domain demo" if beats_all else
-             "FAIL — do not publish this domain demo (see the shipping rule "
+          + ("PASS - publishable as a domain demo" if beats_all else
+             "FAIL - do not publish this domain demo (see the shipping rule "
              "in this script's docstring)"))
 
     # ---- JSON ----------------------------------------------------------------

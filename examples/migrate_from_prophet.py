@@ -23,8 +23,10 @@ print("=" * 70)
 print("Example 1: Basic Time Series Forecasting")
 print("=" * 70)
 
-# Load data
-df = pd.read_csv('../dataset_examples/Electric_Production.csv', parse_dates=['DATE'])
+# Load data (path is relative to the repo, so this runs from anywhere)
+from pathlib import Path
+CSV = Path(__file__).resolve().parents[1] / "dataset_examples" / "Electric_Production.csv"
+df = pd.read_csv(CSV, parse_dates=['DATE'])
 
 # -----------------------------------------------------------------------------
 # WITH PROPHET

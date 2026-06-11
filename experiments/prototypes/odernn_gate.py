@@ -263,7 +263,7 @@ def main():
 
     # ---- table -------------------------------------------------------------
     print("\n" + "=" * 60)
-    print(f"ODE-RNN gate @ {1 - obs.mean():.0%} missingness — held-out MAE "
+    print(f"ODE-RNN gate @ {1 - obs.mean():.0%} missingness - held-out MAE "
           f"vs TRUE series (epochs {args.epochs})")
     print("=" * 60)
     ranked = sorted(res.items(), key=lambda kv: kv[1])
@@ -271,7 +271,7 @@ def main():
         print(f"  {name:26s} MAE {mae:7.3f}")
     print("-" * 60)
     if ranked[0][0] == "ODE-RNN encoder":
-        print("NOTE: ODE-RNN won on this run — the Section 11.2 gate did "
+        print("NOTE: ODE-RNN won on this run - the Section 11.2 gate did "
               "not reproduce; re-examine before changing its status.")
     else:
         print("NEGATIVE RESULT CONFIRMED: the ODE-RNN encoder does not beat "

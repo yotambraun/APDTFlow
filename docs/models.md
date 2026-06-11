@@ -1,193 +1,243 @@
 # APDTFlow Model Architectures
 
-This document provides an in-depth look at the various forecasting models included in the APDTFlow framework. Each model is designed to address different aspects of time series forecasting and comes with unique architectural components and parameters. Understanding these details will help you choose and configure the best model for your specific application.
+This document describes the model architectures shipped in APDTFlow v0.4.0: the main
+APDTFlow model (with its two decoder variants), and the three alternative cores —
+TransformerForecaster, TCNForecaster, and EnsembleForecaster.
+
+For the literature each component builds on, the training objective, and how every
+published number was produced, see [METHODOLOGY.md](METHODOLOGY.md) (canonical).
+Measured results live in [experiment_results.md](experiment_results.md).
 
 ---
 
 ## Table of Contents
 
-1. [APDTFlow Model](#apdtflow-model)
-2. [TransformerForecaster](#transformerforecaster)
-3. [TCNForecaster](#tcnforecaster)
-4. [EnsembleForecaster](#ensembleforecaster)
-5. [Parameter Summary](#parameter-summary)
-6. [Conclusion](#conclusion)
+1. [The APDTFlow model](#1-the-apdtflow-model)
+2. [ContinuousODEDecoder (`decoder_type='continuous'`)](#2-continuousodedecoder-decoder_typecontinuous)
+3. [Multivariate input and sensor importance](#3-multivariate-input-and-sensor-importance)
+4. [TransformerForecaster](#4-transformerforecaster)
+5. [TCNForecaster](#5-tcnforecaster)
+6. [EnsembleForecaster](#6-ensembleforecaster)
+7. [Parameter summary](#7-parameter-summary)
 
 ---
 
-## 1. APDTFlow Model
+## 1. The APDTFlow model
 
-### Overview
+The core model treats the latent state of a time series as a continuous-time
+trajectory governed by a learned ordinary differential equation. The pipeline, in
+order:
 
-The **APDTFlow** model is the flagship architecture in the framework. It integrates multiple advanced techniques to capture both global trends and local fluctuations in time series data while also providing uncertainty estimates.
+### 1.1 Multi-scale decomposition
 
-![APDTFlow Forecast Diagram](../assets/images/forecast_adtflow.png)
-*Figure 1: Forecast example comparing the input sequence, true future values, and the model’s predicted future.*
-### Architecture Details
+The input window is decomposed by parallel dilated convolutions
+(`ResidualMultiScaleDecomposer`) into `num_scales` components at different temporal
+resolutions. Each component is modeled separately and fused downstream, giving the
+latent dynamics cleaner signals to integrate.
 
-- **Multi-Scale Decomposition:**  
-  The model decomposes the input time series into multiple scales (or resolutions). This enables the capture of both high-level trends and fine-grained details.
-  
-- **Hierarchical Neural Dynamics:**  
-  Each decomposed scale is processed using a Neural Ordinary Differential Equation (Neural ODE) module. This module models the continuous evolution of latent states over time.
-  
-- **Probabilistic Fusion:**  
-  Latent representations from the different scales are fused probabilistically. This not only merges information from various resolutions but also quantifies uncertainty in the forecasts.
-  
-- **Time-Aware Transformer Decoder:**  
-  The fused latent state is passed to a Transformer-based decoder that integrates temporal information (using techniques like sine-cosine positional encodings) to generate the final forecast.
+### 1.2 NeuralDynamics — the latent ODE
 
-### Key Parameters
+Each scale component conditions a latent state evolved by `NeuralDynamics`, a learned
+ODE mapping `(t, (h, x_t))` to the time-derivatives of the latent mean and
+log-variance. Integration uses `torchdiffeq`:
 
-- **`T_in`:** Number of past time steps used as input.
-- **`T_out`:** Forecast horizon (number of future time steps predicted).
-- **`num_scales`:** Number of scales for multi-scale decomposition.
-- **`filter_size`:** Size of the convolutional filter in the decomposition module (affects the receptive field).
-- **`hidden_dim`:** Dimensionality of the hidden state in both the dynamics module and the decoder.
-- **`forecast_horizon`:** Number of future steps to predict (should be equal to `T_out`).
-- **TimeSeriesEmbedding Module:**  
-  - **GatedResidualNetwork (GRN) Blocks:** Nonlinear transformations with gating for both raw time and periodic components.  
-  - **(Optional) Calendar Feature Processing:** You can provide additional calendar features (such as day-of-week or month) to further improve the embedding.
-  - **Fusion:** The embeddings from the raw and periodic inputs are concatenated and passed through a linear layer to produce an embedding of dimension `embed_dim`.
+- `ode_method='rk4'` (default) — fixed-step RK4, roughly 10x faster on CPU;
+- `ode_method='dopri5_adjoint'` — adaptive Dormand–Prince with adjoint
+  backpropagation; lower memory for long sequences.
 
-- **Integration:**  
-  When `use_embedding` is enabled in the configuration, the model first transforms the input time index (generated from `t_span`) into a rich embedding. This embedding is then projected to a single channel and fed into the Residual Multi‑Scale Decomposer. The rest of the APDTFlow pipeline (neural ODE dynamics, probabilistic fusion, and the time‑aware transformer decoder) remains unchanged.
+Treating the latent state as a continuous-time trajectory — rather than a discrete
+recurrence — is what later enables `predict_at` and `predict_when`.
 
+> Note: this class was named `HierarchicalNeuralDynamics` before v0.4.0. The old name
+> remains as a deprecated alias for one minor release.
 
-### Use Cases
+### 1.3 Additive time embedding (gated residual networks)
 
-APDTFlow is best suited for complex forecasting tasks where:
-- Multiple temporal patterns exist (e.g., seasonal, trend, and noise components).
-- Quantifying forecast uncertainty is important (e.g., energy production, financial markets).
-- Modeling both global and local dynamics is required.
+With `use_embedding=True` (the default), calendar/time-index information enters
+through a learnable `TimeSeriesEmbedding` built from gated residual networks (in the
+style of the Temporal Fusion Transformer), projected to one channel and **added to**
+the series values:
 
----
+```python
+x = x + projected_embedding
+```
 
-## 2. TransformerForecaster
+The embedding is additive, never a substitute for the data. Versions ≤ 0.3.x replaced
+the input with the embedding, which made predictions independent of the input series —
+the defect, its discovery, and the regression tests that now prevent it are documented
+in [METHODOLOGY.md, Section 8](METHODOLOGY.md#8-engineering-history).
 
-### Overview
+### 1.4 Sequence-aware ProbScaleFusion
 
-The **TransformerForecaster** leverages the Transformer architecture, which is renowned for its self-attention mechanism. This model is especially useful for datasets with long-range dependencies and complex temporal interactions.
+The per-scale latent trajectories — each kept at full length `(batch, T_in,
+hidden_dim)`, not collapsed to a summary vector — are fused by uncertainty-weighted
+attention computed **per timestep** (`ProbScaleFusion`). Scales that are confident at
+a given time contribute more to the fused trajectory at that time.
 
-### Architecture Details
+### 1.5 Transformer decoder over the full latent trajectory
 
-- **Encoder-Decoder Structure:**  
-  Mimics the standard Transformer design with an encoder to process the input sequence and a decoder to generate forecasts.
-  
-- **Self-Attention Mechanism:**  
-  Uses self-attention layers to weigh the importance of different time steps, allowing the model to capture long-term dependencies effectively.
-  
-- **Time-Aware Enhancements:**  
-  Incorporates positional encodings and other mechanisms to preserve the sequential nature of the data.
+With `decoder_type='transformer'` (the default), a time-aware transformer decoder
+attends over the **entire** fused latent trajectory (length `T_in`), not a single
+final state, and emits the `forecast_horizon`-step forecast together with a
+log-variance head.
 
-### Key Parameters
+### 1.6 Linear residual skip
 
-- **`T_in` and `T_out`:** Define the input sequence length and forecast horizon.
-- **`hidden_dim`:** Size of internal representations (affects the capacity of self-attention layers).
-- **Attention-Specific Settings:**  
-  While not always exposed in a simple API, parameters such as the number of attention heads and the number of Transformer layers can be tuned for performance and computational efficiency.
+A direct linear map from the raw input window to the forecast
+(`nn.Linear(history_length, forecast_horizon)`) is added to the decoder output, in
+the spirit of N-BEATS basis projections and the DLinear result that linear maps are a
+strong forecasting backbone. The deep ODE-plus-transformer path learns the residual
+the linear map cannot express. (The continuous decoder carries its own per-step skip,
+so this one is transformer-only — applying both would double-count the skip and make
+`predict()` disagree with `predict_at()` at integer offsets.)
 
-### Use Cases
+### Training objective
 
-TransformerForecaster is ideal when:
-- Your time series data has long-range dependencies.
-- You require a flexible architecture capable of learning complex patterns, such as in weather forecasting or stock market prediction.
-
----
-
-## 3. TCNForecaster
-
-### Overview
-
-The **TCNForecaster** is based on Temporal Convolutional Networks (TCNs), which use dilated convolutions to efficiently capture long-range dependencies with a high degree of parallelism.
-
-### Architecture Details
-
-- **Dilated Convolutions:**  
-  Utilizes dilated (or atrous) convolutions to increase the receptive field without a proportional increase in model parameters. This allows the network to consider a wide temporal context.
-  
-- **Residual Connections:**  
-  Incorporates skip/residual connections to facilitate deeper network architectures and improve gradient flow during training.
-  
-- **Stacked Convolutional Layers:**  
-  Features multiple convolutional layers that progressively extract higher-level features from the input sequence.
-
-### Key Parameters
-
-- **`T_in` and `T_out`:** Define the window of input data and forecast horizon.
-- **`filter_size`:** Size of the convolutional filters; larger filters capture broader context.
-- **`hidden_dim`:** Number of filters (channels) in the convolutional layers.
-- **Dilation Rates:**  
-  The configuration of dilation rates, which determines the effective receptive field of the network.
-
-### Use Cases
-
-TCNForecaster works well for:
-- Real-time applications where parallel processing is advantageous.
-- Scenarios where local dependencies are critical, such as short-term demand forecasting or sensor data analysis.
+Default loss is MSE (`loss_type='mse'`); Gaussian NLL is available
+(`loss_type='nll'`). Under MSE training the log-variance head is untrained and its raw
+values are meaningless — all uncertainty APDTFlow shows then comes from conformal
+calibration, never from the variance head. See
+[METHODOLOGY.md, Section 2](METHODOLOGY.md#2-training-objective).
 
 ---
 
-## 4. EnsembleForecaster
+## 2. ContinuousODEDecoder (`decoder_type='continuous'`)
 
-### Overview
+New in v0.4.0. Construct the forecaster with `decoder_type='continuous'` to decode
+forecasts at **arbitrary real-valued time offsets** — fractional steps, or beyond the
+trained horizon. This decoder is what powers `predict_at(timestamps)` and
+`predict_when(threshold)`.
 
-The **EnsembleForecaster** is designed to combine the strengths of multiple forecasting models. By aggregating predictions from diverse architectures, ensemble methods often achieve more robust and accurate forecasts.
+![predict_at: one model, any moment in time](../assets/images/apdtflow_continuous_hero.png)
 
-### Architecture Details
+How it works:
 
-- **Model Aggregation:**  
-  Multiple forecasters (e.g., APDTFlow, TransformerForecaster, TCNForecaster) are trained independently.
-  
-- **Fusion Strategies:**  
-  The predictions from the individual models are combined using fusion strategies such as averaging or weighted averaging. In some implementations, probabilistic fusion is applied to also capture uncertainty.
-  
-- **Parallel Training:**  
-  Individual models can be trained in parallel, and their outputs are aggregated during inference.
+1. The encoder's final fused latent state `h_T` is integrated forward in **forecast
+   time** by a second, small learned ODE (an MLP `dyn: (h, t) -> dh/dt`, fixed-step
+   RK4 with step size 0.25, so integration accuracy does not depend on how sparse the
+   query offsets are). A linear readout decodes each latent state; a parallel head
+   emits log-variances.
+2. **Per-step interpolated skip.** A linear map from the raw input window produces
+   values at the integer grid offsets `1..forecast_horizon`; these are interpolated
+   smoothly across continuous offsets with a Catmull–Rom cubic Hermite spline (linear
+   extrapolation outside the grid). Without this skip the decoder collapses to
+   level-only output on cyclic data — a failure we measured and now gate with a
+   mandatory cycle-expressiveness test in `tests/test_continuous.py`.
+3. **Randomized query training.** During `fit`, query times are sampled uniformly in
+   `(0, horizon]` each batch and targets are linearly interpolated between grid
+   points; the loss averages the grid loss and the off-grid loss. Off-grid accuracy is
+   therefore trained, not emergent.
 
-### Key Parameters
+Offsets are expressed in forecast steps: `1.0` is one step after the end of the input
+window; values beyond `forecast_horizon` extrapolate past the trained horizon (the
+per-step conformal quantile of the last grid step is reused there — documented
+behavior, not a calibration claim beyond the horizon). Measured grid/off-grid/
+beyond-horizon behavior is reported in
+[METHODOLOGY.md, Section 3](METHODOLOGY.md#3-continuous-time-decoding-predict_at) and
+[experiment_results.md](experiment_results.md).
 
-- **Consistent Input/Output Settings:**  
-  All models within the ensemble must share the same `T_in` and `T_out` settings.
-- **Fusion Method:**  
-  The method used to aggregate forecasts, which may be configurable (e.g., simple average vs. weighted average).
-
-### Use Cases
-
-EnsembleForecaster is particularly beneficial when:
-- You need to improve forecast accuracy and robustness.
-- Your application can tolerate the extra computational cost of training and running multiple models (e.g., critical infrastructure forecasting).
-
----
-
-## 5. Parameter Summary
-
-| Parameter       | Description                                                                          | Typical Values               |
-|-----------------|--------------------------------------------------------------------------------------|------------------------------|
-| **`T_in`**      | Number of historical time steps used as input.                                       | Depends on the dataset       |
-| **`T_out`**     | Forecast horizon; number of future time steps to predict.                            | Depends on the application   |
-| **`num_scales`**| Number of scales for multi-scale decomposition (APDTFlow only).                       | 3–5 typically                |
-| **`filter_size`**| Convolutional filter size in the decomposition or convolutional layers.             | 3–7 typically                |
-| **`hidden_dim`**| Size of hidden states in dynamics modules or Transformer layers.                     | 16–128 (depending on complexity) |
-| **`forecast_horizon`**| Must equal `T_out`, specifies the output length of the forecast.              | Same as T_out                |
-| `embed_dim`     | Dimension of the learned time series embedding (should match `hidden_dim`).              |
-| `use_embedding` | Flag to enable the learnable TimeSeriesEmbedding module.                                 |
+The model-level entry point is `APDTFlow.forward_at(x, t_span, query_offsets)`;
+the user-facing APIs are `APDTFlowForecaster.predict_at`, `predict_when`, and
+`predict_when_fleet`.
 
 ---
 
-## 6. Conclusion
+## 3. Multivariate input and sensor importance
 
-The APDTFlow framework provides a suite of powerful forecasting models, each designed with different strengths:
+New in v0.4.0. Pass `feature_cols` to `fit()` (with `model_type='apdtflow'`) to feed
+multiple input series — e.g. raw sensor channels — alongside the target:
 
-- **APDTFlow Model:** Offers multi-scale decomposition with neural ODE dynamics and probabilistic fusion for uncertainty-aware forecasting.
-- **TransformerForecaster:** Utilizes self-attention to capture long-range dependencies, ideal for complex temporal patterns.
-- **TCNForecaster:** Employs dilated convolutions to efficiently model local and medium-range dependencies.
-- **EnsembleForecaster:** Combines multiple models to deliver robust and accurate predictions through model aggregation.
+```python
+model.fit(df, target_col='capacity', feature_cols=['voltage', 'temperature'])
+```
 
-By understanding the architectural details and tuning the key parameters, you can tailor these models to a wide range of time series forecasting tasks. For further information and usage examples, refer to the [Quick Start Guide](../README.md) and additional documentation within the repository.
+Internally the model is built with `n_input_channels = 1 + len(feature_cols)` and a
+learned **health-indicator fusion** layer (`nn.Conv1d(n_channels, 1, kernel_size=1)`)
+fuses the channels into one series in front of the pipeline. The forecast target
+remains `target_col`; each channel is independently z-normalized.
 
-Happy forecasting!
+The fusion weights are a readable sensor-importance vector:
+
+```python
+model.sensor_importance_   # pd.Series indexed by channel name
+```
+
+`feature_cols` cannot be combined with `exog_cols` or `categorical_cols` (those enter
+through a separate exogenous-fusion path; see the
+[index page](index.md#exogenous-and-categorical-features)).
 
 ---
 
-[Return to Project README](https://github.com/yotambraun/APDTFlow/tree/main)
+## 4. TransformerForecaster
+
+A compact sequence-to-sequence transformer (`model_type='transformer'`): a linear
+encoder lifts the input to `model_dim`, a standard `nn.TransformerDecoder` (2 layers,
+4 heads) attends over the encoded sequence with fixed sine–cosine positional encodings
+as the forecast queries, and a linear head emits the horizon. Useful as a strong,
+familiar baseline for long-range dependencies. It does not support exogenous or
+categorical features, conformal calibration through the forecaster, or
+`predict_at`/`predict_when`.
+
+## 5. TCNForecaster
+
+A temporal convolutional network (`model_type='tcn'`): stacked causal dilated
+convolutions with weight normalization, residual connections, and exponentially
+growing dilation. Fast, parallel, and effective when local-to-medium-range structure
+dominates. Same API limitations as the TransformerForecaster.
+
+## 6. EnsembleForecaster
+
+Combines multiple forecaster instances by (optionally weighted) averaging of their
+predictions; members train independently. Available at the module level
+(`apdtflow.models.ensemble_forecaster`) for custom pipelines.
+`APDTFlowForecaster(model_type='ensemble')` is **not** currently supported in the
+high-level API — use the module-level class directly.
+
+---
+
+## 7. Parameter summary
+
+`APDTFlowForecaster` constructor parameters (the high-level API):
+
+| Parameter | Default | Description |
+|---|---|---|
+| `model_type` | `'apdtflow'` | `'apdtflow'`, `'transformer'`, or `'tcn'` |
+| `num_scales` | `3` | Scales in the multi-scale decomposition (APDTFlow only) |
+| `hidden_dim` | `16` | Latent dimension of the ODE dynamics, fusion, and decoder |
+| `filter_size` | `5` | Convolution filter size in the decomposer |
+| `forecast_horizon` | `7` | Number of steps the model is trained to forecast |
+| `history_length` | `30` | Input window length (also sizes the residual skip) |
+| `learning_rate` | `0.001` | Adam learning rate |
+| `batch_size` | `32` | Training batch size |
+| `num_epochs` | `50` | Training epochs |
+| `device` | auto | `'cuda'` or `'cpu'`; auto-detected if `None` |
+| `use_embedding` | `True` | Additive learnable time embedding (Section 1.3) |
+| `loss_type` | `'mse'` | `'mse'` or `'nll'` |
+| `ode_method` | `'rk4'` | `'rk4'` or `'dopri5_adjoint'` (Section 1.2) |
+| `decoder_type` | `'transformer'` | `'transformer'` or `'continuous'` (Section 2) |
+| `exog_fusion_type` | `'gated'` | `'concat'`, `'gated'`, or `'attention'` |
+| `use_conformal` | `False` | Calibrate conformal intervals during `fit` (required for `predict_when`) |
+| `conformal_method` | `'split'` | `'split'` or `'adaptive'` |
+| `calibration_split` | `0.2` | Fraction of data held for calibration |
+| `early_stopping` | `False` | Stop on stalled validation loss |
+| `patience` | `5` | Early-stopping patience (epochs) |
+| `validation_split` | `0.2` | Validation fraction when early stopping is on |
+| `categorical_encoding` | `'onehot'` | Encoding for `categorical_cols` |
+
+Choosing a configuration:
+
+- **Event timing / forecast at arbitrary times:** `decoder_type='continuous'`,
+  `use_conformal=True`. This is the predictive-maintenance configuration.
+- **Plain grid forecasting:** the defaults; add `use_conformal=True` for calibrated
+  intervals.
+- **Long input windows on limited memory:** `ode_method='dopri5_adjoint'`.
+- **Multi-sensor equipment:** `fit(..., feature_cols=sensor_cols)`; inspect
+  `sensor_importance_`. For equipment operating under multiple regimes, normalize
+  per regime first with `apdtflow.preprocessing.regime_normalize`.
+
+For when *not* to use APDTFlow at all (random-walk series, noise-driven event timing,
+very short series), see [METHODOLOGY.md, Section 7](METHODOLOGY.md#7-negative-results--what-we-tested-and-do-not-ship).
+
+---
+
+[Back to documentation index](index.md)

@@ -252,25 +252,25 @@ def main():
 
     # ---------------- results table ----------------
     width = max(len(n) for n in names)
-    print("\n" + "=" * (width + 14 * len(METHODS)))
-    print(f"Multi-domain benchmark — MAE relative to seasonal-naive "
+    print("\n" + "=" * (width + 16 * len(METHODS)))
+    print(f"Multi-domain benchmark - MAE relative to seasonal-naive "
           f"(horizon {T_OUT}, epochs {args.epochs}; lower is better, "
           f"<1.00 beats seasonal-naive)")
-    print("=" * (width + 14 * len(METHODS)))
-    header = "dataset".ljust(width) + "".join(f"{m:>14s}" for m in METHODS)
+    print("=" * (width + 16 * len(METHODS)))
+    header = "dataset".ljust(width) + "".join(f"{m:>16s}" for m in METHODS)
     print(header)
     print("-" * len(header))
     for name in names:
         rel = results[name]["rel_to_seasonal_naive"]
         row = name.ljust(width)
-        row += "".join(f"{rel[m]:>14.2f}" for m in METHODS)
+        row += "".join(f"{rel[m]:>16.2f}" for m in METHODS)
         print(row)
     print("-" * len(header))
     print("absolute MAE:")
     for name in names:
         mae = results[name]["mae"]
         row = name.ljust(width)
-        row += "".join(f"{mae[m]:>14.3f}" for m in METHODS)
+        row += "".join(f"{mae[m]:>16.3f}" for m in METHODS)
         print(row)
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)

@@ -1,0 +1,131 @@
+{
+  "meta": {
+    "script": "experiments/benchmark_multidomain.py",
+    "horizon": 12,
+    "epochs": 30,
+    "seed": 0,
+    "generated": "2026-06-11 16:21:43"
+  },
+  "results": {
+    "electric (real, monthly)": {
+      "mae": {
+        "APDTFlow": 4.495432739405739,
+        "seasonal-naive": 2.9508077063093765,
+        "naive-last": 10.857821176552912,
+        "linear": 3.0284266553671486,
+        "Holt-Winters": 3.6249080516577434
+      },
+      "rel_to_seasonal_naive": {
+        "APDTFlow": 1.5234583838837301,
+        "seasonal-naive": 1.0,
+        "naive-last": 3.679609875403561,
+        "linear": 1.0263043060690835,
+        "Holt-Winters": 1.22844604340263
+      },
+      "T_in": 24,
+      "n_points": 397,
+      "n_test_windows": 44,
+      "season": 12
+    },
+    "temperature (real, daily)": {
+      "mae": {
+        "APDTFlow": 2.208191422164015,
+        "seasonal-naive": 3.0166335904410775,
+        "naive-last": 2.7616402085185006,
+        "linear": 2.2438919410386586,
+        "Holt-Winters": 2.4223346214982877
+      },
+      "rel_to_seasonal_naive": {
+        "APDTFlow": 0.7320051825853813,
+        "seasonal-naive": 1.0,
+        "naive-last": 0.9154708802784056,
+        "linear": 0.7438397384915971,
+        "Holt-Winters": 0.802992656839078
+      },
+      "T_in": 36,
+      "n_points": 1500,
+      "n_test_windows": 252,
+      "season": 365
+    },
+    "retail-like (mult. seasonal)": {
+      "mae": {
+        "APDTFlow": 2.5787984045475403,
+        "seasonal-naive": 2.564155683026741,
+        "naive-last": 19.91459969527736,
+        "linear": 1.750772901643773,
+        "Holt-Winters": 2.0838586830362624
+      },
+      "rel_to_seasonal_naive": {
+        "APDTFlow": 1.0057105430913287,
+        "seasonal-naive": 1.0,
+        "naive-last": 7.766532986706204,
+        "linear": 0.6827872867598869,
+        "Holt-Winters": 0.8126880504293196
+      },
+      "T_in": 30,
+      "n_points": 800,
+      "n_test_windows": 118,
+      "season": 30
+    },
+    "regime-switching": {
+      "mae": {
+        "APDTFlow": 1.933210254008258,
+        "seasonal-naive": 2.5077685497005993,
+        "naive-last": 3.604987555497548,
+        "linear": 2.0937496677011436,
+        "Holt-Winters": 2.152990042469196
+      },
+      "rel_to_seasonal_naive": {
+        "APDTFlow": 0.7708886269584418,
+        "seasonal-naive": 1.0,
+        "naive-last": 1.4375280190542086,
+        "linear": 0.8349054652396509,
+        "Holt-Winters": 0.8585282093621599
+      },
+      "T_in": 24,
+      "n_points": 800,
+      "n_test_windows": 124,
+      "season": 24
+    },
+    "trend+dual-seasonality": {
+      "mae": {
+        "APDTFlow": 1.1296610471565365,
+        "seasonal-naive": 1.3304739017908478,
+        "naive-last": 3.4131997603199613,
+        "linear": 0.6627820263440956,
+        "Holt-Winters": 0.5085723087682739
+      },
+      "rel_to_seasonal_naive": {
+        "APDTFlow": 0.8490666713837733,
+        "seasonal-naive": 1.0,
+        "naive-last": 2.56540151274348,
+        "linear": 0.49815484952540295,
+        "Holt-Winters": 0.38224899269630475
+      },
+      "T_in": 24,
+      "n_points": 1200,
+      "n_test_windows": 204,
+      "season": 24
+    },
+    "random walk (stochastic)": {
+      "mae": {
+        "APDTFlow": 3.2577091940585823,
+        "seasonal-naive": 1.7498098125976007,
+        "naive-last": 1.7498098125976007,
+        "linear": 2.004265640922817,
+        "Holt-Winters": 1.9667326108054217
+      },
+      "rel_to_seasonal_naive": {
+        "APDTFlow": 1.861750443165305,
+        "seasonal-naive": 1.0,
+        "naive-last": 1.0,
+        "linear": 1.1454191344072275,
+        "Holt-Winters": 1.123969357495943
+      },
+      "T_in": 24,
+      "n_points": 800,
+      "n_test_windows": 124,
+      "season": 1
+    }
+  }
+}

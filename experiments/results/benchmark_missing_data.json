@@ -1,0 +1,33 @@
+{
+  "meta": {
+    "script": "experiments/benchmark_missing_data.py",
+    "purpose": "reproduce the Section 11.1 negative result (missingness features rejected)",
+    "horizon": 12,
+    "history": 36,
+    "epochs": 40,
+    "seed": 1,
+    "generated": "2026-06-11 16:43:15"
+  },
+  "results": {
+    "30%": {
+      "missing_fraction": 0.35083333333333333,
+      "mae_vs_true": {
+        "APDTFlow impute-only": 1.7692390449704956,
+        "APDTFlow mask+delta-t": 2.0511545803878612,
+        "linear (ffill)": 1.6337304552685799,
+        "seasonal-naive (ffill)": 1.681486534512149
+      },
+      "n_test_windows": 192
+    },
+    "50%": {
+      "missing_fraction": 0.5483333333333333,
+      "mae_vs_true": {
+        "APDTFlow impute-only": 2.814701187550701,
+        "APDTFlow mask+delta-t": 3.307078916478207,
+        "linear (ffill)": 2.627694990103122,
+        "seasonal-naive (ffill)": 2.785110613187389
+      },
+      "n_test_windows": 192
+    }
+  }
+}

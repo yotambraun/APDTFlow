@@ -1,0 +1,55 @@
+{
+  "demo": "fd002_robustness",
+  "dataset": "NASA C-MAPSS FD002 (260 engines, 6 operating regimes)",
+  "config": {
+    "selected_sensors": [
+      "s11",
+      "s17",
+      "s15",
+      "s4",
+      "s2"
+    ],
+    "target_orientation_sign": 1.0,
+    "threshold": 1.3625838028224466,
+    "direction": "above",
+    "history": 30,
+    "horizon": 40,
+    "alpha": 0.1,
+    "epochs": 1,
+    "stride": 25,
+    "train_engines": 8,
+    "audit_engines": 6,
+    "n_regimes": 6,
+    "seed": 6
+  },
+  "metrics": {
+    "n_windows": 41,
+    "n_events": 6,
+    "n_no_crossing": 35,
+    "mae_full_apdtflow": 10.304600666699502,
+    "mae_full_linear": 3.166191011329877,
+    "mae_full_persistence": 10.304600666699502,
+    "mae_caught": null,
+    "catch_rate": 0.0,
+    "n_false_alarms": 0,
+    "false_alarm_rate": 0.0,
+    "coverage": null,
+    "matched_subset_n": 0,
+    "matched_apdtflow_mae": null,
+    "matched_linear_mae": null,
+    "n_calibration_crossings": 0
+  },
+  "fleet_snapshot": {
+    "n_engines": 6,
+    "n_with_actual_crossing": 6,
+    "act_by_early_enough": 0.0,
+    "window_coverage": NaN
+  },
+  "sensor_importance": {
+    "health_indicator": 0.047272440046072006,
+    "s17": 0.03070332668721676,
+    "s15": 0.4175702631473541,
+    "s4": 0.07876484096050262,
+    "s2": -0.25250566005706787
+  }
+}

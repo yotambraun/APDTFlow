@@ -51,15 +51,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cell", default="B0005", choices=CELLS,
                         help="Held-out battery cell to explore.")
-    parser.add_argument("--origin", type=int, default=None,
+    parser.add_argument("--origin", type=int, default=100,
                         help="Forecast origin (cycle row index >= history length).")
     parser.add_argument("--epochs", type=int, default=15)
     args = parser.parse_args()
 
     set_seed(0)
     capacity = load_capacity(args.cell)
-    origin = args.origin if args.origin is not None else max(HISTORY, len(capacity) // 2)
-    origin = int(np.clip(origin, HISTORY, len(capacity) - 1))
+    origin = int(np.clip(args.origin, HISTORY, len(capacity) - 1))
 
     print(f"Training on the other two cells (leave-{args.cell}-out)...")
     model = fit_on_other_cells(args.cell, args.epochs)

@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 import warnings
 from pathlib import Path
@@ -51,6 +52,8 @@ from apdtflow import APDTFlowForecaster, set_seed  # noqa: E402
 from apdtflow.event_time import first_crossing_time  # noqa: E402
 
 warnings.filterwarnings("ignore")
+for _name in ("apdtflow.forecaster", "apdtflow.conformal"):
+    logging.getLogger(_name).setLevel(logging.WARNING)
 
 DATA_FILE = REPO / "dataset_examples" / "cmapss" / "train_FD001.txt"
 RESULTS_DIR = REPO / "experiments" / "results"
@@ -195,7 +198,6 @@ def dense_trajectory(forecaster, window: np.ndarray, n_points: int = 240):
 def plot_hero(forecaster, series, record, threshold, lo, hi, path: Path):
     z = series[record["unit"]]
     origin = record["origin"]
-    anchor_idx = origin + HISTORY - 1
     hist_x = np.arange(-(HISTORY - 1), 1)
     hist_y = z[origin:origin + HISTORY]
     future = z[origin + HISTORY:origin + HISTORY + HORIZON]
@@ -234,7 +236,6 @@ def plot_hero(forecaster, series, record, threshold, lo, hi, path: Path):
     fig.tight_layout()
     fig.savefig(path, dpi=150)
     plt.close(fig)
-    _ = anchor_idx
 
 
 def main() -> None:
@@ -292,7 +293,7 @@ def main() -> None:
     print(f"90%-window coverage  : {fmt(metrics['coverage'], 100)}%")
     print(f"matched subset (n={metrics['matched_subset_n']}): linear "
           f"{fmt(metrics['matched_linear_mae'])} vs APDTFlow "
-          f"{fmt(metrics['matched_apdtflow_mae'])} cycles — linear stays a sharp "
+          f"{fmt(metrics['matched_apdtflow_mae'])} cycles -- linear stays a sharp "
           f"point-estimator on easy windows; APDTFlow's edge is reliability")
 
     payload = {

@@ -1,0 +1,83 @@
+{
+  "demo": "battery_eol",
+  "dataset": "NASA PCoE Li-ion batteries B0005/B0006/B0007",
+  "config": {
+    "threshold_ah": 1.4,
+    "direction": "below",
+    "history": 30,
+    "horizon": 30,
+    "alpha": 0.1,
+    "epochs": 1,
+    "stride": 1,
+    "seed": 3,
+    "units": "measured cycles (rows); chronological cycles = measured * median cycle spacing",
+    "median_cycle_spacing": {
+      "B0005": 4.0,
+      "B0006": 4.0,
+      "B0007": 4.0
+    }
+  },
+  "per_cell": {
+    "B0005": {
+      "n_windows": 109,
+      "n_events": 30,
+      "n_no_crossing": 65,
+      "mae_full_apdtflow": 13.149368923253473,
+      "mae_full_linear": 3.4737629001159886,
+      "mae_full_persistence": 15.232669250361749,
+      "mae_caught": 19.024418432591066,
+      "catch_rate": 0.4,
+      "n_false_alarms": 49,
+      "n_correctly_censored": 16,
+      "false_alarm_rate": 0.7538461538461538,
+      "coverage": 1.0,
+      "n_calibration_crossings": 77
+    },
+    "B0006": {
+      "n_windows": 109,
+      "n_events": 31,
+      "n_no_crossing": 49,
+      "mae_full_apdtflow": 11.793368893229419,
+      "mae_full_linear": 15.650562616905127,
+      "mae_full_persistence": 15.473539639492108,
+      "mae_caught": 6.813550490418328,
+      "catch_rate": 0.22580645161290322,
+      "n_false_alarms": 0,
+      "n_correctly_censored": 49,
+      "false_alarm_rate": 0.0,
+      "coverage": 0.0,
+      "n_calibration_crossings": 42
+    },
+    "B0007": {
+      "n_windows": 109,
+      "n_events": 0,
+      "n_no_crossing": 109,
+      "mae_full_apdtflow": null,
+      "mae_full_linear": null,
+      "mae_full_persistence": null,
+      "mae_caught": null,
+      "catch_rate": null,
+      "n_false_alarms": 30,
+      "n_correctly_censored": 79,
+      "false_alarm_rate": 0.27522935779816515,
+      "coverage": null,
+      "n_calibration_crossings": 0
+    }
+  },
+  "pooled": {
+    "mae_full_apdtflow": 12.460254153896988,
+    "mae_full_linear": 9.661972592254731,
+    "mae_full_persistence": 15.355078792378816,
+    "coverage": 0.4918032786885246,
+    "catch_rate": 0.3114754098360656,
+    "n_events": 61,
+    "mae_full_apdtflow_chron_cycles": 49.841016615587954
+  },
+  "censoring_honesty": {
+    "cell": "B0007",
+    "n_no_crossing_windows": 109,
+    "n_correctly_censored": 79,
+    "n_false_alarms": 30,
+    "false_alarm_rate": 0.27522935779816515
+  }
+}

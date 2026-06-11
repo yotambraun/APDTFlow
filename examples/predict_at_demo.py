@@ -27,11 +27,13 @@ def main():
     df = pd.read_csv(CSV)
     date_col, value_col = df.columns[0], df.columns[1]
     df[date_col] = pd.to_datetime(df[date_col])
+    df = df.iloc[-1100:].reset_index(drop=True)  # ~3 years is plenty for a demo
 
     model = APDTFlowForecaster(
         forecast_horizon=14,
         history_length=60,
-        num_epochs=20,
+        num_epochs=8,
+        batch_size=128,
         decoder_type="continuous",   # enables predict_at / predict_when
         use_conformal=True,          # calibrated uncertainty
         verbose=True,

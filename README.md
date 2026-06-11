@@ -10,6 +10,13 @@
 [![Python Versions](https://img.shields.io/pypi/pyversions/apdtflow.svg)](https://pypi.org/project/apdtflow/)
 [![CI](https://github.com/yotambraun/APDTFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/yotambraun/APDTFlow/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/yotambraun/APDTFlow/branch/main/graph/badge.svg)](https://codecov.io/gh/yotambraun/APDTFlow)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yotambraun/APDTFlow/blob/main/Quickstart.ipynb)
+
+**[Quickstart](Quickstart.ipynb)** ·
+**[Documentation](docs/index.md)** ·
+**[Methodology](docs/METHODOLOGY.md)** ·
+**[Benchmarks](docs/experiment_results.md)** ·
+**[Examples](examples/)**
 
 Forecasting tools tell you *what the value will be*. APDTFlow models time as **continuous**
 (Neural ODEs), so it also answers the question operations teams actually ask: **when will
@@ -50,6 +57,8 @@ schedule = model.predict_when_fleet(assets,           # whole fleet -> ranked sc
 ```
 
 ## Verified results (every number reproducible from `experiments/`)
+
+![evidence summary](assets/images/apdtflow_evidence_summary.png)
 
 | Event-timing audit (real NASA data, held-out units) | APDTFlow | Linear extrap. | Persistence |
 |---|---|---|---|
@@ -126,6 +135,17 @@ aware of another forecasting library offering `predict_at` at arbitrary
 timestamps or calibrated `predict_when` event timing (as of June 2026); if you
 use a foundation model for grid accuracy, APDTFlow is complementary.
 
+### What each tool family offers (capabilities, not accuracy)
+
+| Capability | APDTFlow | Grid DL libraries (NeuralForecast, Darts) | Foundation models (Chronos-2, TimesFM, Moirai-2) |
+|---|:-:|:-:|:-:|
+| Grid forecasts (`predict`) | ✅ | ✅ | ✅ |
+| Calibrated conformal intervals | ✅ | partial | partial |
+| Forecast at arbitrary real-valued times (`predict_at`) | ✅ | — | — |
+| Event timing with calibrated time windows (`predict_when`) | ✅ | — | — |
+| Fleet-level act-by scheduling | ✅ | — | — |
+| Zero-shot (no training) | — | — | ✅ |
+
 ## When NOT to use APDTFlow
 
 - Stock prices / crypto — random-walk regime; nothing beats naive, including us
@@ -169,6 +189,30 @@ Run the audit yourself: `python experiments/audit_predict_when.py` benchmarks
 on *your* data. If APDTFlow wins, open a PR — we feature your domain with your
 numbers. That pipeline is how every result on this page was produced, including
 the ideas we tested and **rejected** ([docs/METHODOLOGY.md](docs/METHODOLOGY.md)).
+
+## Articles
+
+- [A Practical Approach to Time Series Forecasting with APDTFlow](https://pub.towardsai.net/a-practical-approach-to-time-series-forecasting-with-apdtflow-78e06cb51a1b) — Towards AI
+- [APDTFlow v0.3.0: From Research to Production-Ready Time Series Forecasting](https://medium.com/towards-artificial-intelligence/apdtflow-v0-3-0-from-research-to-production-ready-time-series-forecasting-0be1848e323a) — Towards AI
+
+*Both articles cover earlier versions; the core ideas still apply, but the API has
+grown since (`predict_at`, `predict_when`, fleet scheduling) and v0.4.0 fixed a
+critical model defect — see the [CHANGELOG](CHANGELOG.md) before following old code
+snippets.*
+
+## Citation
+
+If APDTFlow is useful in your research, please cite it:
+
+```bibtex
+@software{apdtflow,
+  author = {Braun, Yotam},
+  title  = {APDTFlow: continuous-time forecasting with Neural ODEs},
+  url    = {https://github.com/yotambraun/APDTFlow},
+  year   = {2026},
+  version = {0.4.0}
+}
+```
 
 ## More
 

@@ -17,6 +17,12 @@ Protocol (Section 10.5 of the v0.4.0 methodology):
     90%-window coverage (alpha=0.1, asymmetric signed-error calibration), and
     censoring honesty on the cell that never reaches EOL inside the horizon.
 
+Cells are modeled in state-of-health terms (capacity / initial capacity, the
+standard battery-RUL normalization): the cells start at different absolute
+capacities with different fade rates, and SOH normalization is what lets a
+model trained on two cells transfer to the third. The EOL event is still the
+NASA-standard "capacity < 1.4 Ah", expressed per cell as an SOH threshold.
+
 The cycle ids in the CSVs are irregular (the cycle column jumps by ~2-4);
 rows are the model's time grid ("measured cycles") and errors are also
 reported in chronological cycles via the median cycle-column spacing.
@@ -87,16 +93,21 @@ def load_cells() -> dict:
     cells = {}
     for cell in CELLS:
         df = pd.read_csv(DATA_DIR / f"nasa_{cell}.csv")
+        capacity = df["capacity"].to_numpy(dtype=float)
         cells[cell] = {
-            "capacity": df["capacity"].to_numpy(dtype=float),
+            "capacity": capacity,
             "cycle": df["cycle"].to_numpy(dtype=float),
+            # State of health: capacity relative to the cell's initial
+            # capacity — aligns cells with different absolute capacities.
+            "soh": capacity / capacity[0],
+            "cap0": float(capacity[0]),
         }
     return cells
 
 
 # ----------------------------------------------------------------- model
 def fit_fold(train_series: list, epochs: int) -> APDTFlowForecaster:
-    """Fit one LOBO fold on the concatenation of the two training cells."""
+    """Fit one LOBO fold on the concatenated training cells' SOH series."""
     df = pd.DataFrame({"capacity": np.concatenate(train_series)})
     forecaster = APDTFlowForecaster(
         forecast_horizon=HORIZON,
@@ -130,18 +141,18 @@ def dense_trajectory(forecaster, window: np.ndarray, n_points: int = 240):
 
 
 # ----------------------------------------------------------------- audit
-def linear_eta(window: np.ndarray) -> float | None:
+def linear_eta(window: np.ndarray, thr: float) -> float | None:
     """Crossing time of a least-squares line fitted to the input window."""
     t = np.arange(len(window), dtype=float)
     slope, intercept = np.polyfit(t, window, 1)
     if (DIRECTION == "below" and slope >= 0) or (DIRECTION == "above" and slope <= 0):
         return None
     anchor_value = intercept + slope * (len(window) - 1)
-    tau = (THRESHOLD - anchor_value) / slope
+    tau = (thr - anchor_value) / slope
     return float(tau) if 0 < tau <= HORIZON else None
 
 
-def audit_cell(forecaster, series: np.ndarray, stride: int) -> list:
+def audit_cell(forecaster, series: np.ndarray, stride: int, thr: float) -> list:
     """Slide windows over a held-out cell; return one record per window."""
     grid = np.arange(0.0, HORIZON + 1)
     records, windows = [], []
@@ -150,22 +161,22 @@ def audit_cell(forecaster, series: np.ndarray, stride: int) -> list:
         anchor = window[-1]
         future = series[i + HISTORY:i + HISTORY + HORIZON]
         t_act = first_crossing_time(
-            grid, np.concatenate([[anchor], future]), THRESHOLD, DIRECTION
+            grid, np.concatenate([[anchor], future]), thr, DIRECTION
         )
         records.append({
             "origin": i,
             "anchor": float(anchor),
             "t_act": t_act,
-            "t_lin": linear_eta(window),
+            "t_lin": linear_eta(window, thr),
             # persistence: a flat line never crosses unless already crossed
-            "t_per": 0.0 if (anchor <= THRESHOLD) == (DIRECTION == "below") else None,
+            "t_per": 0.0 if (anchor <= thr) == (DIRECTION == "below") else None,
         })
         windows.append(window)
 
     x_norm = (np.asarray(windows) - forecaster.scaler_mean_) / forecaster.scaler_std_
     t_pred = forecaster._batch_crossing_times(
         torch.tensor(x_norm[:, None, :], dtype=torch.float32),
-        None, THRESHOLD, DIRECTION,
+        None, thr, DIRECTION,
     )
     for record, tp in zip(records, t_pred):
         record["t_pred"] = None if np.isnan(tp) else float(tp)
@@ -226,7 +237,9 @@ def plot_hero(forecaster, series, record, fleet_row, path: Path):
     hist_x = np.arange(-(k - 1), 1)
     hist_y = series[anchor_idx - k + 1:anchor_idx + 1]
     future = series[origin + HISTORY:origin + HISTORY + HORIZON]
-    taus, traj = dense_trajectory(forecaster, series[origin:origin + HISTORY])
+    cap0 = series[0]
+    taus, traj = dense_trajectory(forecaster, series[origin:origin + HISTORY] / cap0)
+    traj = traj * cap0  # SOH -> Ah for display
 
     eta, earliest, latest = fleet_row["eta"], fleet_row["earliest"], fleet_row["latest"]
     t_act = record["t_act"]
@@ -354,9 +367,10 @@ def main() -> None:
     for held_out in CELLS:
         train_cells = [c for c in CELLS if c != held_out]
         print(f"\n[fold] held-out {held_out} <- train on {'+'.join(train_cells)}")
-        forecaster = fit_fold([cells[c]["capacity"] for c in train_cells], args.epochs)
-        lo, hi, n_cal = forecaster._crossing_calibration(THRESHOLD, DIRECTION, ALPHA)
-        records = audit_cell(forecaster, cells[held_out]["capacity"], args.stride)
+        forecaster = fit_fold([cells[c]["soh"] for c in train_cells], args.epochs)
+        thr_soh = THRESHOLD / cells[held_out]["cap0"]
+        lo, hi, n_cal = forecaster._crossing_calibration(thr_soh, DIRECTION, ALPHA)
+        records = audit_cell(forecaster, cells[held_out]["soh"], args.stride, thr_soh)
         stats = summarize(records, lo, hi)
         stats["n_calibration_crossings"] = n_cal
         per_cell[held_out] = stats
@@ -442,8 +456,8 @@ def main() -> None:
     if candidates:
         record = min(candidates, key=lambda r: abs(r["t_act"] - 20))
         fleet = forecaster.predict_when_fleet(
-            {HERO_CELL: hero_series[:record["origin"] + HISTORY]},
-            threshold=THRESHOLD, direction=DIRECTION, alpha=ALPHA,
+            {HERO_CELL: hero_series[:record["origin"] + HISTORY] / hero_series[0]},
+            threshold=THRESHOLD / hero_series[0], direction=DIRECTION, alpha=ALPHA,
         ).iloc[0]
         plot_hero(forecaster, hero_series, record, fleet,
                   IMAGES_DIR / "apdtflow_battery_eol.png")

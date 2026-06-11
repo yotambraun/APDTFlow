@@ -53,3 +53,6 @@ command_pytest.txt
 Thumbs.db
 .Spotlight-V100
 .Trashes
+# Downloaded benchmark datasets (fetched via dataset_examples/get_*.py)
+dataset_examples/cmapss/
+dataset_examples/opsd_germany_daily.csv

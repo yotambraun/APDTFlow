@@ -55,6 +55,12 @@ classifiers=[
         "License :: OSI Approved :: MIT License",
     ]
 
+[project.optional-dependencies]
+mlflow = ["mlflow"]
+wandb = ["wandb"]
+serve = ["fastapi", "uvicorn"]
+dev = ["pytest", "pytest-cov", "flake8", "mypy", "build", "twine"]
+
 [project.urls]
 Homepage = "https://github.com/yotambraun/APDTFlow"
 Documentation = "https://github.com/yotambraun/APDTFlow"
@@ -68,4 +74,7 @@ markers = [
 
 [project.scripts]
 apdtflow = "apdtflow.cli:main"
+
+[tool.setuptools.package-data]
+apdtflow = ["py.typed", "config/*.yaml"]
 

@@ -1,7 +1,11 @@
 import torch
 import torch.nn as nn
+
+from apdtflow.logger_util import get_logger
 from .base_forecaster import BaseForecaster
 from apdtflow.evaluation.regression_evaluator import RegressionEvaluator
+
+logger = get_logger("apdtflow.models.transformer_forecaster")
 
 
 class TransformerForecaster(BaseForecaster):
@@ -54,8 +58,9 @@ class TransformerForecaster(BaseForecaster):
                 loss.backward()
                 optimizer.step()
                 epoch_loss += loss.item() * x_batch.size(0)
-            print(
-                f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss/len(train_loader.dataset):.4f}"
+            logger.info(
+                "Epoch %d/%d, Loss: %.4f",
+                epoch + 1, num_epochs, epoch_loss / len(train_loader.dataset),
             )
         return
 

@@ -25,7 +25,10 @@ from .event_time import (
     batch_first_crossing_times,
     first_crossing_time,
 )
+from .logger_util import get_logger
 from .preprocessing.categorical_encoder import CategoricalEncoder
+
+logger = get_logger("apdtflow.forecaster")
 
 
 class APDTFlowForecaster:
@@ -553,7 +556,8 @@ class APDTFlowForecaster:
         exog_cols: Optional[List[str]] = None,
         future_exog_cols: Optional[List[str]] = None,
         categorical_cols: Optional[List[str]] = None,
-        future_categorical_cols: Optional[List[str]] = None
+        future_categorical_cols: Optional[List[str]] = None,
+        log_callback: Optional[callable] = None
     ):
         """
         Fit the forecasting model.
@@ -588,8 +592,8 @@ class APDTFlowForecaster:
             Fitted forecaster
         """
         if self.verbose:
-            print(f"Fitting {self.model_type} model...")
-            print(f"Device: {self.device}")
+            logger.info(f"Fitting {self.model_type} model...")
+            logger.info(f"Device: {self.device}")
 
         # Validate model_type
         if self.model_type == 'ensemble':
@@ -653,9 +657,9 @@ class APDTFlowForecaster:
             num_categorical_features = categorical_encoded.shape[1]
 
             if self.verbose:
-                print(f"Encoded {len(categorical_cols)} categorical columns into {num_categorical_features} features")
-                print(f"  Categorical columns: {categorical_cols}")
-                print(f"  Encoding: {self.categorical_encoding}")
+                logger.info(f"Encoded {len(categorical_cols)} categorical columns into {num_categorical_features} features")
+                logger.info(f"  Categorical columns: {categorical_cols}")
+                logger.info(f"  Encoding: {self.categorical_encoding}")
 
             # Add encoded categorical features to exog features
             if exog_cols:
@@ -672,7 +676,7 @@ class APDTFlowForecaster:
                 self.has_numerical_exog_ = True  # Track that we have true numerical exog
                 self.num_exog_features_ = combined_exog.shape[1]
                 if self.verbose:
-                    print(f"Combined {len(exog_cols)} numerical + {num_categorical_features} categorical = {self.num_exog_features_} total exogenous features")
+                    logger.info(f"Combined {len(exog_cols)} numerical + {num_categorical_features} categorical = {self.num_exog_features_} total exogenous features")
             else:
                 # Only categorical features (treat as exog)
                 self._combined_exog_data = categorical_encoded
@@ -681,7 +685,7 @@ class APDTFlowForecaster:
                 self.has_numerical_exog_ = False  # Only categorical, no numerical exog
                 self.num_exog_features_ = categorical_encoded.shape[1]
                 if self.verbose:
-                    print(f"Using {self.num_exog_features_} categorical features as exogenous variables")
+                    logger.info(f"Using {self.num_exog_features_} categorical features as exogenous variables")
                 exog_cols = []  # Will use combined data instead
 
         # Check exogenous variables
@@ -696,9 +700,9 @@ class APDTFlowForecaster:
             self.has_numerical_exog_ = True  # True numerical exogenous variables
             self.num_exog_features_ = len(exog_cols)
             if self.verbose:
-                print(f"Using {self.num_exog_features_} exogenous features: {exog_cols}")
+                logger.info(f"Using {self.num_exog_features_} exogenous features: {exog_cols}")
                 if future_exog_cols:
-                    print(f"  Future-known features: {future_exog_cols}")
+                    logger.info(f"  Future-known features: {future_exog_cols}")
 
         if isinstance(data, pd.DataFrame):
             self.data_df_ = data.copy()
@@ -716,10 +720,10 @@ class APDTFlowForecaster:
             has_exog_data = False
 
         if self.verbose:
-            print(f"Created {len(X)} training samples")
-            print(f"Input shape: {X.shape}, Target shape: {y.shape}")
+            logger.info(f"Created {len(X)} training samples")
+            logger.info(f"Input shape: {X.shape}, Target shape: {y.shape}")
             if has_exog_data:
-                print(f"Exog shape: {exog_X.shape}")
+                logger.info(f"Exog shape: {exog_X.shape}")
 
         # Initialize model
         self.model = self._initialize_model()
@@ -755,7 +759,7 @@ class APDTFlowForecaster:
             val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False)
 
             if self.verbose:
-                print(f"Training samples: {n_train}, Validation samples: {n_val}")
+                logger.info(f"Training samples: {n_train}, Validation samples: {n_val}")
         else:
             train_loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
             val_loader = None
@@ -871,8 +875,8 @@ class APDTFlowForecaster:
                     # Stop if patience exceeded
                     if epochs_without_improvement >= self.patience:
                         if self.verbose:
-                            print(f"\nEarly stopping at epoch {epoch + 1}")
-                            print(f"Best validation loss: {best_val_loss:.4f}")
+                            logger.info(f"\nEarly stopping at epoch {epoch + 1}")
+                            logger.info(f"Best validation loss: {best_val_loss:.4f}")
                         # Restore best model
                         if best_model_state:
                             self.model.load_state_dict(best_model_state)
@@ -880,6 +884,14 @@ class APDTFlowForecaster:
                 else:
                     # Update progress bar with training loss only
                     pbar.set_postfix({'loss': f'{avg_train_loss:.4f}'})
+
+                if log_callback is not None:
+                    metrics = {'train_loss': avg_train_loss}
+                    if self.early_stopping and val_loader is not None:
+                        metrics['val_loss'] = avg_val_loss
+                    # Works directly with mlflow.log_metrics / wandb.log:
+                    # fit(..., log_callback=lambda epoch, m: mlflow.log_metrics(m, step=epoch))
+                    log_callback(epoch, metrics)
 
         else:
             # Other models (transformer, tcn, ensemble) use their own train_model() method
@@ -893,7 +905,7 @@ class APDTFlowForecaster:
         self._is_fitted = True
 
         if self.verbose:
-            print("Training completed!")
+            logger.info("Training completed!")
 
         # Create conformal predictor if enabled (only for APDTFlow)
         if self.use_conformal:
@@ -904,7 +916,7 @@ class APDTFlowForecaster:
                 )
 
             if self.verbose:
-                print("Calibrating conformal predictor...")
+                logger.info("Calibrating conformal predictor...")
 
             # Generate calibration predictions
             self.model.eval()
@@ -981,7 +993,7 @@ class APDTFlowForecaster:
             self._when_cache_ = {}
 
             if self.verbose:
-                print("Conformal predictor calibrated!")
+                logger.info("Conformal predictor calibrated!")
 
         return self
 
@@ -1667,7 +1679,7 @@ class APDTFlowForecaster:
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             if self.verbose:
-                print(f"Plot saved to {save_path}")
+                logger.info(f"Plot saved to {save_path}")
 
         plt.show()
 
@@ -1968,7 +1980,7 @@ class APDTFlowForecaster:
                     predictions = temp_model.predict(steps=forecast_horizon)
                 except Exception as e:
                     if self.verbose:
-                        print(f"Skipping fold {fold} due to error: {e}")
+                        logger.info(f"Skipping fold {fold} due to error: {e}")
                     continue
             else:
                 # Use pre-trained model
@@ -1987,7 +1999,7 @@ class APDTFlowForecaster:
                     predictions = self.predict(steps=forecast_horizon)
                 except Exception as e:
                     if self.verbose:
-                        print(f"Skipping fold {fold} due to error: {e}")
+                        logger.info(f"Skipping fold {fold} due to error: {e}")
                     # Restore original
                     self.last_sequence_ = original_last_seq
                     continue
@@ -2048,21 +2060,21 @@ class APDTFlowForecaster:
                         metric_results[metric] = np.mean(numerator / denominator) * 100
                 except Exception as e:
                     if self.verbose:
-                        print(f"Could not compute {metric}: {e}")
+                        logger.info(f"Could not compute {metric}: {e}")
 
             # Print summary
             if self.verbose:
-                print("\n" + "="*60)
-                print("Historical Forecasts Summary")
-                print("="*60)
-                print(f"Total forecasts: {fold}")
-                print(f"Total predictions: {len(results_df)}")
-                print(f"Forecast horizon: {forecast_horizon}")
-                print(f"Stride: {stride}")
-                print("\nMetrics:")
+                logger.info("\n" + "="*60)
+                logger.info("Historical Forecasts Summary")
+                logger.info("="*60)
+                logger.info(f"Total forecasts: {fold}")
+                logger.info(f"Total predictions: {len(results_df)}")
+                logger.info(f"Forecast horizon: {forecast_horizon}")
+                logger.info(f"Stride: {stride}")
+                logger.info("\nMetrics:")
                 for metric, value in metric_results.items():
-                    print(f"  {metric}: {value:.4f}")
-                print("="*60 + "\n")
+                    logger.info(f"  {metric}: {value:.4f}")
+                logger.info("="*60 + "\n")
 
         # Reorder columns for better readability
         column_order = []
@@ -2072,6 +2084,160 @@ class APDTFlowForecaster:
         results_df = results_df[column_order]
 
         return results_df
+
+    _PARAM_NAMES = (
+        'model_type', 'num_scales', 'hidden_dim', 'filter_size',
+        'forecast_horizon', 'history_length', 'learning_rate', 'batch_size',
+        'num_epochs', 'use_embedding', 'verbose', 'loss_type', 'ode_method',
+        'decoder_type', 'exog_fusion_type', 'use_conformal',
+        'conformal_method', 'calibration_split', 'early_stopping', 'patience',
+        'validation_split', 'categorical_encoding',
+    )
+
+    def get_params(self, deep: bool = True) -> Dict:
+        """Constructor parameters, scikit-learn style."""
+        return {name: getattr(self, name) for name in self._PARAM_NAMES}
+
+    def set_params(self, **params):
+        """Set constructor parameters, scikit-learn style.
+
+        Returns self. Changing parameters does not refit the model.
+        """
+        for name, value in params.items():
+            if name not in self._PARAM_NAMES:
+                raise ValueError(
+                    f"Invalid parameter {name!r}. Valid parameters: "
+                    f"{sorted(self._PARAM_NAMES)}"
+                )
+            setattr(self, name, value)
+        return self
+
+    def score_recent(
+        self,
+        data: Union[pd.DataFrame, np.ndarray],
+        target_col: Optional[str] = None,
+        alpha: float = 0.05,
+    ) -> Dict[str, float]:
+        """Drift check: rolling accuracy and coverage on recent data.
+
+        Slides the fitted model over ``data`` (most recent observations,
+        in the units the model was fitted on) and compares rolling MAE and
+        conformal coverage against the calibration baseline. Coverage that
+        decays below ``1 - alpha`` signals the model needs recalibration —
+        refit (or refit with use_conformal=True) on data that includes the
+        recent regime.
+
+        Returns
+        -------
+        dict
+            ``mae``, ``rmse``, ``n_windows``, ``baseline_mae`` (calibration
+            split), ``mae_ratio`` (mae / baseline_mae), and — when fitted
+            with ``use_conformal=True`` — ``coverage`` vs
+            ``expected_coverage``.
+        """
+        if not self._is_fitted or self.model is None:
+            raise RuntimeError("Model must be fitted first")
+        if self.model_type != 'apdtflow':
+            raise RuntimeError("score_recent supports model_type='apdtflow' only")
+        if self.has_exog_:
+            raise ValueError("score_recent does not support exogenous-variable models")
+
+        if isinstance(data, pd.DataFrame):
+            target = target_col or self.target_col_
+            if self.feature_cols_:
+                channels = [target] + list(self.feature_cols_)
+                matrix = data[channels].to_numpy(dtype=float).T
+                norm = (matrix - self.feature_means_[:, None]) / self.feature_stds_[:, None]
+            else:
+                series = data[target].to_numpy(dtype=float)
+                norm = ((series - self.scaler_mean_) / self.scaler_std_).reshape(1, -1)
+        else:
+            if self.feature_cols_:
+                raise ValueError("Multivariate models require DataFrame input")
+            series = np.asarray(data, dtype=float).flatten()
+            norm = ((series - self.scaler_mean_) / self.scaler_std_).reshape(1, -1)
+
+        total = self.history_length + self.forecast_horizon
+        n_windows = norm.shape[1] - total + 1
+        if n_windows <= 0:
+            raise ValueError(
+                f"Need at least {total} recent points, got {norm.shape[1]}"
+            )
+        X = np.stack([norm[:, i:i + self.history_length] for i in range(n_windows)])
+        targets = np.stack([
+            norm[0, i + self.history_length:i + total] for i in range(n_windows)
+        ]) * self.scaler_std_ + self.scaler_mean_
+
+        t_span = torch.linspace(0, 1, steps=self.history_length, device=self.device)
+        self.model.eval()
+        preds_parts = []
+        with torch.no_grad():
+            X_t = torch.tensor(X, dtype=torch.float32)
+            for start in range(0, len(X_t), 256):
+                xb = X_t[start:start + 256].to(self.device)
+                pb, _ = self.model(xb, t_span)
+                preds_parts.append(pb.squeeze(-1).cpu().numpy())
+        preds = np.concatenate(preds_parts) * self.scaler_std_ + self.scaler_mean_
+
+        residuals = np.abs(preds - targets)
+        result: Dict[str, float] = {
+            'mae': float(residuals.mean()),
+            'rmse': float(np.sqrt(((preds - targets) ** 2).mean())),
+            'n_windows': float(n_windows),
+        }
+        if self._calib_residuals_ is not None:
+            baseline = float(self._calib_residuals_.mean())
+            result['baseline_mae'] = baseline
+            result['mae_ratio'] = float(residuals.mean() / baseline) if baseline else float('nan')
+            q = per_step_quantiles(self._calib_residuals_, alpha)
+            result['coverage'] = float((residuals <= q[None, :]).mean())
+            result['expected_coverage'] = 1.0 - alpha
+        return result
+
+    def export_torchscript(self, filepath: str, example_batch_size: int = 1):
+        """Export the fitted model's grid forecast as TorchScript (traced).
+
+        The exported module maps a normalized input window of shape
+        ``(batch, channels, history_length)`` to normalized grid forecasts
+        of shape ``(batch, forecast_horizon, 1)``. Tracing fixes the input
+        window length, the integer forecast grid, AND the batch size
+        (``example_batch_size``, default 1 — the typical serving pattern of
+        one window per call). ``predict_at`` / ``predict_when`` and
+        conformal calibration are not part of the export (serve those
+        through the Python API — see ``examples/serve_api.py``). ONNX
+        export of the ODE integration graph is not currently supported.
+        """
+        if not self._is_fitted or self.model is None:
+            raise RuntimeError("Model must be fitted first")
+        if self.model_type != 'apdtflow':
+            raise RuntimeError("export_torchscript supports model_type='apdtflow' only")
+
+        model = self.model
+        history_length = self.history_length
+        device = self.device
+
+        class _GridForecast(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.model = model
+                self.register_buffer(
+                    't_span', torch.linspace(0, 1, steps=history_length)
+                )
+
+            def forward(self, x):
+                preds, _ = self.model(x, self.t_span)
+                return preds
+
+        wrapper = _GridForecast().to(device).eval()
+        n_channels = 1 + len(self.feature_cols_ or [])
+        example = torch.randn(
+            example_batch_size, n_channels, history_length, device=device
+        )
+        with torch.no_grad():
+            traced = torch.jit.trace(wrapper, example)
+        traced.save(filepath)
+        if self.verbose:
+            logger.info("TorchScript model exported to %s", filepath)
 
     def save(self, filepath: str):
         """
@@ -2178,7 +2344,7 @@ class APDTFlowForecaster:
             pickle.dump(state, f)
 
         if self.verbose:
-            print(f"Model saved to {filepath}")
+            logger.info(f"Model saved to {filepath}")
 
     @classmethod
     def load(cls, filepath: str, device: Optional[str] = None):
@@ -2341,68 +2507,68 @@ class APDTFlowForecaster:
         >>> model.fit(df, target_col='sales')
         >>> model.summary()
         """
-        print("=" * 70)
-        print(f"APDTFlow Forecaster Summary - {self.model_type.upper()}")
-        print("=" * 70)
+        logger.info("=" * 70)
+        logger.info(f"APDTFlow Forecaster Summary - {self.model_type.upper()}")
+        logger.info("=" * 70)
 
-        print("\nModel Configuration:")
-        print(f"  Model Type:          {self.model_type}")
-        print(f"  Forecast Horizon:    {self.forecast_horizon} steps")
-        print(f"  History Length:      {self.history_length} steps")
-        print(f"  Hidden Dimension:    {self.hidden_dim}")
-        print(f"  Number of Scales:    {self.num_scales}")
-        print(f"  Filter Size:         {self.filter_size}")
-        print(f"  Use Embedding:       {self.use_embedding}")
+        logger.info("\nModel Configuration:")
+        logger.info(f"  Model Type:          {self.model_type}")
+        logger.info(f"  Forecast Horizon:    {self.forecast_horizon} steps")
+        logger.info(f"  History Length:      {self.history_length} steps")
+        logger.info(f"  Hidden Dimension:    {self.hidden_dim}")
+        logger.info(f"  Number of Scales:    {self.num_scales}")
+        logger.info(f"  Filter Size:         {self.filter_size}")
+        logger.info(f"  Use Embedding:       {self.use_embedding}")
 
         if self.has_exog_:
-            print("\nExogenous Variables:")
-            print(f"  Number of Features:  {self.num_exog_features_}")
-            print(f"  Fusion Type:         {self.exog_fusion_type}")
-            print(f"  Features:            {self.exog_cols_}")
+            logger.info("\nExogenous Variables:")
+            logger.info(f"  Number of Features:  {self.num_exog_features_}")
+            logger.info(f"  Fusion Type:         {self.exog_fusion_type}")
+            logger.info(f"  Features:            {self.exog_cols_}")
             if self.future_exog_cols_:
-                print(f"  Future-Known:        {self.future_exog_cols_}")
+                logger.info(f"  Future-Known:        {self.future_exog_cols_}")
 
         if self.use_conformal:
-            print("\nConformal Prediction:")
-            print(f"  Method:              {self.conformal_method}")
-            print(f"  Calibration Split:   {self.calibration_split}")
+            logger.info("\nConformal Prediction:")
+            logger.info(f"  Method:              {self.conformal_method}")
+            logger.info(f"  Calibration Split:   {self.calibration_split}")
 
-        print("\nTraining Configuration:")
-        print(f"  Learning Rate:       {self.learning_rate}")
-        print(f"  Batch Size:          {self.batch_size}")
-        print(f"  Epochs:              {self.num_epochs}")
-        print(f"  Device:              {self.device}")
+        logger.info("\nTraining Configuration:")
+        logger.info(f"  Learning Rate:       {self.learning_rate}")
+        logger.info(f"  Batch Size:          {self.batch_size}")
+        logger.info(f"  Epochs:              {self.num_epochs}")
+        logger.info(f"  Device:              {self.device}")
 
         if self.model:
             # Count parameters
             total_params = sum(p.numel() for p in self.model.parameters())
             trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
 
-            print("\nModel Parameters:")
-            print(f"  Total Parameters:    {total_params:,}")
-            print(f"  Trainable Parameters: {trainable_params:,}")
-            print(f"  Non-trainable:       {total_params - trainable_params:,}")
+            logger.info("\nModel Parameters:")
+            logger.info(f"  Total Parameters:    {total_params:,}")
+            logger.info(f"  Trainable Parameters: {trainable_params:,}")
+            logger.info(f"  Non-trainable:       {total_params - trainable_params:,}")
 
             # Estimate model size
             param_size_mb = total_params * 4 / (1024 ** 2)  # Assuming float32
-            print(f"  Model Size:          ~{param_size_mb:.2f} MB")
+            logger.info(f"  Model Size:          ~{param_size_mb:.2f} MB")
 
-        print("\nStatus:")
-        print(f"  Fitted:              {self._is_fitted}")
+        logger.info("\nStatus:")
+        logger.info(f"  Fitted:              {self._is_fitted}")
         if self._is_fitted:
-            print(f"  Target Column:       {self.target_col_}")
+            logger.info(f"  Target Column:       {self.target_col_}")
             if self.scaler_mean_ is not None:
-                print(f"  Data Mean:           {self.scaler_mean_:.4f}")
-                print(f"  Data Std:            {self.scaler_std_:.4f}")
+                logger.info(f"  Data Mean:           {self.scaler_mean_:.4f}")
+                logger.info(f"  Data Std:            {self.scaler_std_:.4f}")
 
         # Residual diagnostics
         if self.residuals_ is not None:
-            print("\nResidual Diagnostics:")
-            print(f"  Mean Residual:       {np.mean(self.residuals_):.4f}")
-            print(f"  Std Residual:        {np.std(self.residuals_):.4f}")
-            print(f"  MAE:                 {np.mean(np.abs(self.residuals_)):.4f}")
+            logger.info("\nResidual Diagnostics:")
+            logger.info(f"  Mean Residual:       {np.mean(self.residuals_):.4f}")
+            logger.info(f"  Std Residual:        {np.std(self.residuals_):.4f}")
+            logger.info(f"  MAE:                 {np.mean(np.abs(self.residuals_)):.4f}")
 
-        print("=" * 70)
+        logger.info("=" * 70)
 
     def compute_residuals(
         self,
@@ -2705,7 +2871,7 @@ class APDTFlowForecaster:
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             if self.verbose:
-                print(f"Residual plot saved to {save_path}")
+                logger.info(f"Residual plot saved to {save_path}")
 
         plt.show()
 
@@ -2794,7 +2960,7 @@ class APDTFlowForecaster:
                 diagnostics['shapiro_stat'] = None
                 diagnostics['shapiro_pvalue'] = None
                 if self.verbose:
-                    print(f"Shapiro-Wilk test failed: {e}")
+                    logger.info(f"Shapiro-Wilk test failed: {e}")
         else:
             # Use Kolmogorov-Smirnov test for larger samples
             try:
@@ -2846,39 +3012,39 @@ class APDTFlowForecaster:
 
         # Print summary if verbose
         if self.verbose:
-            print("\n" + "=" * 70)
-            print("RESIDUAL ANALYSIS")
-            print("=" * 70)
-            print(f"\nSample Size: {diagnostics['n_samples']}")
-            print("\nCentral Tendency:")
-            print(f"  Mean Residual:       {diagnostics['mean']:>10.4f}  (should be ≈0)")
-            print(f"  Std Residual:        {diagnostics['std']:>10.4f}")
-            print(f"  MAE:                 {diagnostics['mae']:>10.4f}")
-            print(f"  RMSE:                {diagnostics['rmse']:>10.4f}")
+            logger.info("\n" + "=" * 70)
+            logger.info("RESIDUAL ANALYSIS")
+            logger.info("=" * 70)
+            logger.info(f"\nSample Size: {diagnostics['n_samples']}")
+            logger.info("\nCentral Tendency:")
+            logger.info(f"  Mean Residual:       {diagnostics['mean']:>10.4f}  (should be ≈0)")
+            logger.info(f"  Std Residual:        {diagnostics['std']:>10.4f}")
+            logger.info(f"  MAE:                 {diagnostics['mae']:>10.4f}")
+            logger.info(f"  RMSE:                {diagnostics['rmse']:>10.4f}")
 
-            print("\nDistribution Shape:")
-            print(f"  Skewness:            {diagnostics['skewness']:>10.4f}  (0 = symmetric)")
-            print(f"  Kurtosis:            {diagnostics['kurtosis']:>10.4f}  (0 = normal)")
+            logger.info("\nDistribution Shape:")
+            logger.info(f"  Skewness:            {diagnostics['skewness']:>10.4f}  (0 = symmetric)")
+            logger.info(f"  Kurtosis:            {diagnostics['kurtosis']:>10.4f}  (0 = normal)")
 
-            print("\nNormality Test:")
+            logger.info("\nNormality Test:")
             if 'shapiro_pvalue' in diagnostics and diagnostics['shapiro_pvalue'] is not None:
-                print(f"  Shapiro-Wilk p-val:  {diagnostics['shapiro_pvalue']:>10.4f}  "
+                logger.info(f"  Shapiro-Wilk p-val:  {diagnostics['shapiro_pvalue']:>10.4f}  "
                       f"({'Normal' if diagnostics['shapiro_pvalue'] > 0.05 else 'Non-normal'})")
             elif 'ks_pvalue' in diagnostics and diagnostics['ks_pvalue'] is not None:
-                print(f"  K-S p-val:           {diagnostics['ks_pvalue']:>10.4f}  "
+                logger.info(f"  K-S p-val:           {diagnostics['ks_pvalue']:>10.4f}  "
                       f"({'Normal' if diagnostics['ks_pvalue'] > 0.05 else 'Non-normal'})")
 
-            print("\nAutocorrelation Test:")
+            logger.info("\nAutocorrelation Test:")
             if diagnostics['ljung_box_pvalue'] is not None:
-                print(f"  Ljung-Box p-val:     {diagnostics['ljung_box_pvalue']:>10.4f}  "
+                logger.info(f"  Ljung-Box p-val:     {diagnostics['ljung_box_pvalue']:>10.4f}  "
                       f"({'No autocorr' if diagnostics['ljung_box_pvalue'] > 0.05 else 'Autocorrelated'})")
 
-            print("\n" + "=" * 70)
-            print("\nInterpretation:")
-            print("  • Mean should be close to 0 (unbiased predictions)")
-            print("  • Skewness/Kurtosis should be close to 0 (normally distributed)")
-            print("  • Normality test p-value > 0.05 indicates normal residuals")
-            print("  • Ljung-Box p-value > 0.05 indicates no autocorrelation (good)")
-            print("=" * 70 + "\n")
+            logger.info("\n" + "=" * 70)
+            logger.info("\nInterpretation:")
+            logger.info("  • Mean should be close to 0 (unbiased predictions)")
+            logger.info("  • Skewness/Kurtosis should be close to 0 (normally distributed)")
+            logger.info("  • Normality test p-value > 0.05 indicates normal residuals")
+            logger.info("  • Ljung-Box p-value > 0.05 indicates no autocorrelation (good)")
+            logger.info("=" * 70 + "\n")
 
         return diagnostics

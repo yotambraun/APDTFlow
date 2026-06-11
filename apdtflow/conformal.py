@@ -17,6 +17,10 @@ import numpy as np
 import torch
 from typing import Optional, Tuple, Callable, overload, Literal, Union
 
+from .logger_util import get_logger
+
+logger = get_logger("apdtflow.conformal")
+
 
 class SplitConformalPredictor:
     """
@@ -90,8 +94,8 @@ class SplitConformalPredictor:
 
         self.is_calibrated = True
 
-        print(f"Calibrated with {n} samples")
-        print(f"  Quantile at {1-self.alpha:.1%} level: {self.quantile:.4f}")
+        logger.info("Calibrated with %d samples", n)
+        logger.info("  Quantile at %.1f%% level: %.4f", 100 * (1 - self.alpha), self.quantile)
 
     @overload
     def predict(

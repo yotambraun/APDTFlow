@@ -54,7 +54,29 @@ time-space conformal calibration ([METHODOLOGY.md §4](METHODOLOGY.md)).
 `python experiments/battery_eol_demo.py` — leave-one-battery-out, horizon 30
 measured cycles, threshold 1.4 Ah, direction below.
 
-<!--PENDING:battery_results_section-->
+Measured 2026-06-12 (cells modeled in state-of-health terms — capacity relative to
+initial capacity, the standard battery-RUL normalization):
+
+| Held-out cell | Events | APDTFlow | Linear | Persistence | Catch | Coverage (90% target) |
+|---|---|---|---|---|---|---|
+| B0005 | 30 | **2.76** | 3.47 | 15.23 | 83% | **96%** |
+| B0006 | 31 | **13.71** | 15.65 | 15.47 | 6% | — |
+| **Pooled** | 61 | **8.33** | 9.66 | 15.36 | 44% | 96% |
+
+Timing errors in measured cycles (multiply by ~4 for chronological cycles — the cells
+are measured every ~4 cycles). B0007 never reaches EOL inside the horizon; the model
+correctly censored 42 of its 109 windows (61% false-alarm rate on that
+just-above-threshold cell — reported, not hidden).
+
+**Honest reading:** pooled timing beats both baselines, and on the typical cell
+(B0005) the model is decisively better-calibrated than anything else we ran. But
+cross-cell transfer to the atypically fast-fading B0006 is weak (6% catch): with only
+two training cells, the model does not extrapolate to a degradation rate it has never
+seen. Fleet-scale battery datasets (Stanford/MIT-Toyota 124-cell) are the roadmap fix
+([CONTRIBUTING.md](../CONTRIBUTING.md)).
+
+![battery](../assets/images/apdtflow_battery_eol.png)
+![battery audit](../assets/images/apdtflow_battery_full_audit.png)
 
 ### 3.2 Turbofan degradation, C-MAPSS FD001
 
@@ -116,9 +138,11 @@ irregular-sampling claims**.
 ### 4.3 Solar-activity timing is persistence-friendly
 
 The sunspots series is kept as a *calibration fixture* (its predict_when time-window
-coverage is unit-tested at ≥85%), not as a skill demo: most threshold crossings on it
-are near-immediate, where persistence is unbeatable.
-<!--PENDING:sunspots_audit_note-->
+coverage is unit-tested at ≥85%), not as a skill demo. The full audit
+(`audit_predict_when.py`, threshold 80, horizon 18, 168 held-out windows, measured
+2026-06-12) confirms the rejection: seasonal-naive catches 62% of crossings at
+4.7-month timing error vs the model's 31% at 5.2 — the **shipping-rule verdict is
+FAIL**, and we publish that verdict instead of the demo.
 
 ## 5. The shipping rule
 

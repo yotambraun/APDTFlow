@@ -1,0 +1,70 @@
+{
+  "meta": {
+    "script": "experiments/audit_predict_when.py",
+    "csv": "C:\\Users\\yotam\\code_projects\\APDTFlow\\dataset_examples\\monthly-sunspots.csv",
+    "value_col": "Sunspots",
+    "threshold": 80.0,
+    "direction": "above",
+    "history": 144,
+    "horizon": 18,
+    "epochs": 20,
+    "stride": 4,
+    "train_frac": 0.6,
+    "alpha": 0.1,
+    "season": 132,
+    "seed": 11,
+    "n_audit_windows": 168,
+    "n_excluded_already_past": 74,
+    "calibration": {
+      "lo": -3.2161157066859545,
+      "hi": 8.246779573166405,
+      "n_crossings": 414
+    },
+    "generated": "2026-06-12 01:50:21"
+  },
+  "scores": {
+    "APDTFlow predict_when": {
+      "n_events": 68,
+      "n_caught": 21,
+      "catch_rate": 0.3088235294117647,
+      "timing_mae": 5.189392051921308,
+      "n_no_crossing_windows": 100,
+      "false_alarms": 9,
+      "false_alarm_rate": 0.09,
+      "window_coverage": 0.6190476190476191
+    },
+    "persistence": {
+      "n_events": 68,
+      "n_caught": 0,
+      "catch_rate": 0.0,
+      "timing_mae": NaN,
+      "n_no_crossing_windows": 100,
+      "false_alarms": 0,
+      "false_alarm_rate": 0.0
+    },
+    "linear extrapolation": {
+      "n_events": 68,
+      "n_caught": 22,
+      "catch_rate": 0.3235294117647059,
+      "timing_mae": 5.443424108227964,
+      "n_no_crossing_windows": 100,
+      "false_alarms": 3,
+      "false_alarm_rate": 0.03
+    },
+    "seasonal-naive": {
+      "n_events": 68,
+      "n_caught": 42,
+      "catch_rate": 0.6176470588235294,
+      "timing_mae": 4.657565742736279,
+      "n_no_crossing_windows": 100,
+      "false_alarms": 15,
+      "false_alarm_rate": 0.15
+    }
+  },
+  "matched_subset_vs_linear": {
+    "n": 11,
+    "model_mae": 3.975721672688967,
+    "linear_mae": 3.4485401909855056
+  },
+  "shipping_rule_pass": false
+}

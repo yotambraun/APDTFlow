@@ -309,10 +309,16 @@ def plot_robustness(forecaster, frames, channels, record, threshold, lo, hi,
                  fontsize=11)
     style_axis(ax)
 
-    ratio = ((metrics["mae_full_linear"] or 0)
-             / max(metrics["mae_full_apdtflow"] or 1e-9, 1e-9))
-    fig.suptitle(f"FD002: the multi-regime robustness win — {ratio:.1f}x better than "
-                 "linear under varying operating conditions", fontsize=12.5)
+    apdt = metrics["mae_full_apdtflow"] or float("nan")
+    lin = metrics["mae_full_linear"] or float("nan")
+    if apdt < lin:
+        headline = (f"FD002 multi-regime audit: timing MAE {apdt:.1f} vs "
+                    f"linear {lin:.1f} cycles ({lin / apdt:.1f}x better)")
+    else:
+        headline = (f"FD002 multi-regime audit (measured): timing MAE {apdt:.1f} "
+                    f"vs linear {lin:.1f} cycles — linear remains the sharper "
+                    "point estimator here")
+    fig.suptitle(headline, fontsize=12.5)
     fig.tight_layout(rect=(0, 0, 1, 0.93))
     fig.savefig(path, dpi=150)
     plt.close(fig)
@@ -406,8 +412,10 @@ def plot_trust_panel(records, lo, hi, metrics, n_engines, path: Path):
                  fontsize=11)
     style_axis(ax)
 
-    fig.suptitle("The trust panel: calibrated, honest, and it tells you its own limits",
-                 fontsize=12.5)
+    cov_pct = (metrics.get("coverage") or 0) * 100
+    verdict = "calibrated" if cov_pct >= 80 else f"UNDER target ({cov_pct:.0f}% vs 90%)"
+    fig.suptitle(f"The trust panel: window coverage {verdict} — "
+                 "and it tells you its own limits", fontsize=12.5)
     fig.tight_layout(rect=(0, 0, 1, 0.94))
     fig.savefig(path, dpi=150)
     plt.close(fig)
@@ -416,8 +424,8 @@ def plot_trust_panel(records, lo, hi, metrics, n_engines, path: Path):
 # ----------------------------------------------------------------- main
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--epochs", type=int, default=8,
-                        help="training epochs (default 8)")
+    parser.add_argument("--epochs", type=int, default=25,
+                        help="training epochs (default 25)")
     parser.add_argument("--stride", type=int, default=5,
                         help="audit window stride (default 5)")
     parser.add_argument("--max-engines", type=int, default=110,
@@ -477,13 +485,20 @@ def main() -> None:
           f"{fmt(metrics['matched_linear_mae'])} vs APDTFlow "
           f"{fmt(metrics['matched_apdtflow_mae'])} cycles")
 
-    # ---- fleet snapshot: one window per unseen engine, varied lead times
+    # ---- fleet snapshot: one window per unseen engine. Origins are anchored
+    # on each engine's actual indicator crossing so the event lies AHEAD of
+    # the snapshot (a maintenance planner's view), at varied lead times.
     rng = np.random.default_rng(SEED)
     histories, actual_by_unit = {}, {}
     for u in test_units:
         target = frames[u][TARGET].to_numpy()
-        lead = int(rng.integers(8, HORIZON))
-        origin = len(target) - HISTORY - lead
+        cross_idx = first_crossing_time(
+            np.arange(len(target), dtype=float), target, threshold, "above")
+        if cross_idx is None:
+            origin = len(target) - HISTORY - HORIZON // 2
+        else:
+            lead = int(rng.integers(5, HORIZON - 8))
+            origin = int(cross_idx) - HISTORY - lead
         if origin < 0:
             continue
         histories[u] = frames[u].iloc[:origin + HISTORY]

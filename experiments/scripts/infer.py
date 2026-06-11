@@ -32,6 +32,8 @@ def main(args):
         hidden_dim=args.hidden_dim,
         output_dim=1,
         forecast_horizon=args.T_out,
+        history_length=args.T_in,
+        ode_method=args.ode_method,
     )
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
@@ -39,9 +41,10 @@ def main(args):
     logger.info("Loading checkpoint from " + checkpoint_path)
     checkpoint = torch.load(checkpoint_path, map_location=device)
     model.load_state_dict(checkpoint)
-    mse, mae = model.evaluate(test_loader, device)
-    logger.info(f"Test MSE: {mse:.4f}, Test MAE: {mae:.4f}")
-    print(f"Test MSE: {mse:.4f}, Test MAE: {mae:.4f}")
+    metrics = model.evaluate(test_loader, device, metrics=["MSE", "MAE"])
+    summary = ", ".join(f"Test {m}: {v:.4f}" for m, v in metrics.items())
+    logger.info(summary)
+    print(summary)
 
 
 if __name__ == "__main__":
@@ -79,6 +82,12 @@ if __name__ == "__main__":
         type=str,
         required=True,
         help="Path to the model checkpoint.",
+    )
+    parser.add_argument(
+        "--ode_method",
+        choices=["rk4", "dopri5_adjoint"],
+        default="rk4",
+        help="ODE solver method.",
     )
     args = parser.parse_args()
 

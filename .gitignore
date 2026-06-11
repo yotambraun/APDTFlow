@@ -11,7 +11,7 @@ checkpoints/
 logs/
 training.log
 *.log
-
+next_version_matriels/
 # Build artifacts
 build/
 dist/
@@ -29,6 +29,7 @@ apdtflow.egg-info/
 
 # Claude Code
 .claude/
+docs/superpowers/
 
 # Testing
 .pytest_cache/

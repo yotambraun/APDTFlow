@@ -106,6 +106,7 @@ def test_training_loss_decreases(dataloaders):
         hidden_dim=16,
         output_dim=1,
         forecast_horizon=2,
+        history_length=10,
     )
     model.to(device)
     initial_loss = evaluate_model(model, val_loader, device)
@@ -132,6 +133,7 @@ def test_no_nan_in_parameters(dataloaders):
         hidden_dim=16,
         output_dim=1,
         forecast_horizon=2,
+        history_length=10,
     )
     model.to(device)
     train_on_split(
@@ -158,6 +160,7 @@ def test_checkpoint_save_and_load(tmp_path, dataloaders):
         hidden_dim=16,
         output_dim=1,
         forecast_horizon=2,
+        history_length=10,
     )
     model.to(device)
     train_on_split(
@@ -177,6 +180,7 @@ def test_checkpoint_save_and_load(tmp_path, dataloaders):
         hidden_dim=16,
         output_dim=1,
         forecast_horizon=2,
+        history_length=10,
     )
     model_new.to(device)
     model_new.load_state_dict(torch.load(checkpoint_path, map_location=device))

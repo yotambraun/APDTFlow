@@ -1,30 +1,12 @@
-import os
-import sys
-from .logger_util import get_logger
+"""APDTFlow: continuous-time forecasting with Neural ODEs.
+
+One trained model answers three questions: ``predict()`` (grid forecasts),
+``predict_at(timestamps)`` (any real-valued time), and
+``predict_when(threshold)`` (event timing with calibrated uncertainty).
+"""
+
 from .forecaster import APDTFlowForecaster
 
-get_logger("APDTFlow")
+__version__ = "0.4.0"
 
-# Expose main API
-__all__ = ['APDTFlowForecaster']
-
-
-def _print_welcome_banner():
-    banner = r"""
-    ────────────────────────────────────────────────
-         🚀 Welcome to APDTFlow! 🚀
-    
-        Your go-to framework for flexible, 
-        modular, and powerful time series forecasting.  
-        
-        Built for pros. Designed for performance. ⚡
-    
-        Let's get forecasting! 📈
-    ────────────────────────────────────────────────
-    """
-    print(banner)
-
-
-if sys.stdout.isatty() and os.environ.get("APDTFLOW_BANNER_PRINTED") is None:
-    _print_welcome_banner()
-    os.environ["APDTFLOW_BANNER_PRINTED"] = "true"
+__all__ = ["APDTFlowForecaster", "__version__"]

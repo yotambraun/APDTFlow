@@ -237,7 +237,7 @@ def main():
               f"(realized {results[label]['missing_fraction']:.1%})")
 
     print("\n" + "=" * 72)
-    print(f"Missing-data benchmark — MAE vs TRUE series on held-out windows "
+    print(f"Missing-data benchmark - MAE vs TRUE series on held-out windows "
           f"(epochs {args.epochs})")
     print("=" * 72)
     methods = ["APDTFlow impute-only", "APDTFlow mask+delta-t",
@@ -258,7 +258,7 @@ def main():
         aw = r["mae_vs_true"]["APDTFlow mask+delta-t"]
         verdict = ("NEGATIVE RESULT CONFIRMED: mask features did not help"
                    if aw >= imp else
-                   "NOTE: mask features helped on this run — re-examine "
+                   "NOTE: mask features helped on this run - re-examine "
                    "spec Section 11.1 before drawing conclusions")
         print(f"{lbl}: impute-only {imp:.3f} vs mask+delta-t {aw:.3f} -> {verdict}")
 

@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, TensorDataset
-from typing import Optional, Union, List, Tuple, Dict
+from typing import Callable, Optional, Union, List, Tuple, Dict
 import warnings
 from tqdm import tqdm
 
@@ -384,7 +384,7 @@ class APDTFlowForecaster:
 
             if np.isnan(arr).any():
                 nan_count = np.isnan(arr).sum()
-                nan_indices = np.where(np.isnan(arr))[0].tolist()
+                nan_indices = list(np.where(np.isnan(arr))[0])
                 raise ValueError(
                     f"Input array contains {nan_count} NaN values at indices: "
                     f"{nan_indices[:10]}{'...' if len(nan_indices) > 10 else ''}"
@@ -557,7 +557,7 @@ class APDTFlowForecaster:
         future_exog_cols: Optional[List[str]] = None,
         categorical_cols: Optional[List[str]] = None,
         future_categorical_cols: Optional[List[str]] = None,
-        log_callback: Optional[callable] = None
+        log_callback: Optional[Callable] = None
     ):
         """
         Fit the forecasting model.
@@ -708,21 +708,29 @@ class APDTFlowForecaster:
             self.data_df_ = data.copy()
 
         # Prepare data
+        data_output: Union[
+            Tuple[torch.Tensor, torch.Tensor],
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+        ]
         if self.feature_cols_:
+            assert target_col is not None
+            assert isinstance(data, pd.DataFrame)
             data_output = self._prepare_data_multivariate(data, target_col, date_col)
         else:
             data_output = self._prepare_data(data, target_col, date_col)
+        exog_X: Optional[torch.Tensor] = None
+        exog_y: Optional[torch.Tensor] = None
         if len(data_output) == 4:
-            X, y, exog_X, exog_y = data_output
+            X, y, exog_X, exog_y = data_output  # type: ignore[misc]
             has_exog_data = True
         else:
-            X, y = data_output
+            X, y = data_output  # type: ignore[misc]
             has_exog_data = False
 
         if self.verbose:
             logger.info(f"Created {len(X)} training samples")
             logger.info(f"Input shape: {X.shape}, Target shape: {y.shape}")
-            if has_exog_data:
+            if has_exog_data and exog_X is not None:
                 logger.info(f"Exog shape: {exog_X.shape}")
 
         # Initialize model
@@ -741,6 +749,7 @@ class APDTFlowForecaster:
             y = y.unsqueeze(2)  # (batch, 1, forecast_horizon) -> (batch, 1, 1, forecast_horizon)
 
         if has_exog_data:
+            assert exog_X is not None and exog_y is not None
             dataset = TensorDataset(X, y, exog_X, exog_y)
         else:
             dataset = TensorDataset(X, y)
@@ -804,6 +813,7 @@ class APDTFlowForecaster:
                     if self.decoder_type == 'continuous':
                         # Randomized-query training: off-grid accuracy is
                         # trained, not emergent.
+                        assert isinstance(self.model, APDTFlow)
                         loss = self.model._continuous_training_loss(
                             x_batch, y_batch, t_span, exog=exog_x_batch
                         )
@@ -989,6 +999,7 @@ class APDTFlowForecaster:
             self._calib_targets_grid_ = targets_grid
             self._calib_residuals_ = np.abs(preds_grid - targets_grid)
             anchor_norm = self._calib_X_[:, 0, -1].numpy()
+            assert self.scaler_mean_ is not None and self.scaler_std_ is not None
             self._calib_anchor_ = anchor_norm * self.scaler_std_ + self.scaler_mean_
             self._when_cache_ = {}
 
@@ -1212,6 +1223,7 @@ class APDTFlowForecaster:
         t_span = torch.linspace(0, 1, steps=self.history_length, device=self.device)
         exog_tensor = self._exog_tensor_for_window(exog_future, self.forecast_horizon)
         taus = torch.tensor(offsets, dtype=torch.float32, device=self.device)
+        assert isinstance(self.model, APDTFlow)
         with torch.no_grad():
             values, _ = self.model.forward_at(x, t_span, taus, exog=exog_tensor)
         values_np = values.squeeze(0).squeeze(-1).cpu().numpy()
@@ -1290,6 +1302,7 @@ class APDTFlowForecaster:
         taus = self._dense_offsets()
         taus_t = torch.tensor(taus, dtype=torch.float32, device=self.device)
         t_span = torch.linspace(0, 1, steps=self.history_length, device=self.device)
+        assert isinstance(self.model, APDTFlow)
         self.model.eval()
 
         pred_traj_parts = []
@@ -1327,6 +1340,7 @@ class APDTFlowForecaster:
 
         # Actual crossing times from the (denormalized) target grid,
         # anchored at offset 0 with the last observed input value.
+        assert self._calib_anchor_ is not None
         anchors = self._calib_anchor_.reshape(-1, 1)
         actual_grid = np.concatenate([anchors, self._calib_targets_grid_], axis=1)
         grid_times = np.arange(0, self.forecast_horizon + 1, dtype=float)
@@ -1556,6 +1570,7 @@ class APDTFlowForecaster:
                 )
             window = matrix[:, -self.history_length:]
             if self.feature_cols_:
+                assert self.feature_means_ is not None and self.feature_stds_ is not None
                 norm = (window - self.feature_means_[:, None]) / self.feature_stds_[:, None]
             else:
                 norm = (window - self.scaler_mean_) / self.scaler_std_
@@ -2145,6 +2160,7 @@ class APDTFlowForecaster:
         if isinstance(data, pd.DataFrame):
             target = target_col or self.target_col_
             if self.feature_cols_:
+                assert self.feature_means_ is not None and self.feature_stds_ is not None
                 channels = [target] + list(self.feature_cols_)
                 matrix = data[channels].to_numpy(dtype=float).T
                 norm = (matrix - self.feature_means_[:, None]) / self.feature_stds_[:, None]
@@ -2155,6 +2171,7 @@ class APDTFlowForecaster:
             if self.feature_cols_:
                 raise ValueError("Multivariate models require DataFrame input")
             series = np.asarray(data, dtype=float).flatten()
+            assert self.scaler_mean_ is not None and self.scaler_std_ is not None
             norm = ((series - self.scaler_mean_) / self.scaler_std_).reshape(1, -1)
 
         total = self.history_length + self.forecast_horizon
@@ -3029,15 +3046,15 @@ class APDTFlowForecaster:
             logger.info("\nNormality Test:")
             if 'shapiro_pvalue' in diagnostics and diagnostics['shapiro_pvalue'] is not None:
                 logger.info(f"  Shapiro-Wilk p-val:  {diagnostics['shapiro_pvalue']:>10.4f}  "
-                      f"({'Normal' if diagnostics['shapiro_pvalue'] > 0.05 else 'Non-normal'})")
+                            f"({'Normal' if diagnostics['shapiro_pvalue'] > 0.05 else 'Non-normal'})")
             elif 'ks_pvalue' in diagnostics and diagnostics['ks_pvalue'] is not None:
                 logger.info(f"  K-S p-val:           {diagnostics['ks_pvalue']:>10.4f}  "
-                      f"({'Normal' if diagnostics['ks_pvalue'] > 0.05 else 'Non-normal'})")
+                            f"({'Normal' if diagnostics['ks_pvalue'] > 0.05 else 'Non-normal'})")
 
             logger.info("\nAutocorrelation Test:")
             if diagnostics['ljung_box_pvalue'] is not None:
                 logger.info(f"  Ljung-Box p-val:     {diagnostics['ljung_box_pvalue']:>10.4f}  "
-                      f"({'No autocorr' if diagnostics['ljung_box_pvalue'] > 0.05 else 'Autocorrelated'})")
+                            f"({'No autocorr' if diagnostics['ljung_box_pvalue'] > 0.05 else 'Autocorrelated'})")
 
             logger.info("\n" + "=" * 70)
             logger.info("\nInterpretation:")

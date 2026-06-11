@@ -56,3 +56,6 @@ Thumbs.db
 # Downloaded benchmark datasets (fetched via dataset_examples/get_*.py)
 dataset_examples/cmapss/
 dataset_examples/opsd_germany_daily.csv
+
+# Type checking
+.mypy_cache/

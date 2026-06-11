@@ -177,7 +177,7 @@ model.fit(
     df, target_col="sales", date_col="date",
     exog_cols=["temperature", "promotion"],
     future_exog_cols=["promotion"],        # known in the future
-    categorical_cols=["day_of_week"],      # one-hot / target / embedding encoding
+    categorical_cols=["day_of_week"],      # one-hot or embedding encoding
 )
 preds = model.predict(exog_future=future_df)
 ```

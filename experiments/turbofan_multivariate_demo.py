@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 import warnings
 from pathlib import Path
@@ -49,6 +50,8 @@ from apdtflow import APDTFlowForecaster, set_seed  # noqa: E402
 from apdtflow.event_time import first_crossing_time  # noqa: E402
 
 warnings.filterwarnings("ignore")
+for _name in ("apdtflow.forecaster", "apdtflow.conformal"):
+    logging.getLogger(_name).setLevel(logging.WARNING)
 
 DATA_FILE = REPO / "dataset_examples" / "cmapss" / "train_FD001.txt"
 RESULTS_DIR = REPO / "experiments" / "results"

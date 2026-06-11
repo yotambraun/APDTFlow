@@ -27,13 +27,14 @@ def main():
     df = pd.read_csv(CSV)
     df.columns = ["month", "sunspots"]
 
-    # Fit on the rising phase of a solar cycle so a crossing lies ahead.
-    train = df.iloc[:1690]
+    # Fit up to the start of a rising solar cycle so a crossing lies ahead.
+    origin = 2740
+    train = df.iloc[origin - 1100:origin]  # ~90 years of monthly data
 
     model = APDTFlowForecaster(
         forecast_horizon=24,
         history_length=48,
-        num_epochs=12,
+        num_epochs=8,
         batch_size=128,
         decoder_type="continuous",
         use_conformal=True,
@@ -56,7 +57,7 @@ def main():
     taus = np.linspace(0.1, 24, 200)
     traj = model.predict_at(taus)
     traj = traj[0] if isinstance(traj, tuple) else traj
-    actual = df["sunspots"].to_numpy()[1690:1690 + 24]
+    actual = df["sunspots"].to_numpy()[origin:origin + 24]
 
     fig, ax = plt.subplots(figsize=(10, 5))
     hist = train["sunspots"].to_numpy()[-72:]

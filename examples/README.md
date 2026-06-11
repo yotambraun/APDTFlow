@@ -79,8 +79,8 @@ covariates and the three fusion strategies (`concat`, `gated`, `attention`).
 
 ### 7. [categorical_features_demo.py](categorical_features_demo.py)
 
-Categorical variables (day-of-week, holidays, categories) with one-hot, target, and
-embedding encodings, including unseen-category handling.
+Categorical variables (day-of-week, holidays, categories) with one-hot and embedding
+encodings, including unseen-category handling.
 
 ### 8. [backtesting_demo.py](backtesting_demo.py)
 

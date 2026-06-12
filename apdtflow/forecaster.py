@@ -958,12 +958,13 @@ class APDTFlowForecaster:
                     if exog_x_batch is not None:
                         calib_exog_parts.append(exog_x_batch.cpu())
 
-            calib_preds = np.concatenate(calib_preds, axis=0)
-            calib_targets = np.concatenate(calib_targets, axis=0)
+            calib_preds_arr = np.concatenate(calib_preds, axis=0)
+            calib_targets_arr = np.concatenate(calib_targets, axis=0)
 
             # Denormalize for conformal predictor
-            calib_preds_denorm = calib_preds * self.scaler_std_ + self.scaler_mean_
-            calib_targets_denorm = calib_targets * self.scaler_std_ + self.scaler_mean_
+            assert self.scaler_mean_ is not None and self.scaler_std_ is not None
+            calib_preds_denorm = calib_preds_arr * self.scaler_std_ + self.scaler_mean_
+            calib_targets_denorm = calib_targets_arr * self.scaler_std_ + self.scaler_mean_
 
             # Initialize conformal predictor with identity function
             # (we already have predictions, so predict_fn just returns input)
@@ -1315,6 +1316,7 @@ class APDTFlowForecaster:
                 vals, _ = self.model.forward_at(xb, t_span, taus_t, exog=eb)
                 pred_traj_parts.append(vals.squeeze(-1).cpu().numpy())
         pred_traj = np.concatenate(pred_traj_parts, axis=0)
+        assert self.scaler_mean_ is not None and self.scaler_std_ is not None
         pred_traj = pred_traj * self.scaler_std_ + self.scaler_mean_
         return batch_first_crossing_times(taus, pred_traj, threshold, direction)
 
@@ -2180,6 +2182,7 @@ class APDTFlowForecaster:
             raise ValueError(
                 f"Need at least {total} recent points, got {norm.shape[1]}"
             )
+        assert self.scaler_mean_ is not None and self.scaler_std_ is not None
         X = np.stack([norm[:, i:i + self.history_length] for i in range(n_windows)])
         targets = np.stack([
             norm[0, i + self.history_length:i + total] for i in range(n_windows)

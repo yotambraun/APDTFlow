@@ -319,7 +319,7 @@ class TestResidualAnalysis:
         # Create dataset large enough to trigger KS test path (>5000 residuals)
         n_samples = 1500
         data = pd.DataFrame({
-            'date': pd.date_range('2024-01-01', periods=n_samples, freq='H'),
+            'date': pd.date_range('2024-01-01', periods=n_samples, freq='h'),
             'value': 100 + 0.01 * np.arange(n_samples) + np.random.randn(n_samples) * 2
         })
 

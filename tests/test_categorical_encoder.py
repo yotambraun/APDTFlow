@@ -277,7 +277,7 @@ class TestCreateTimeFeatures:
 
     def test_month_name_feature(self):
         """Test month_name feature."""
-        dates = pd.date_range('2024-01-01', periods=3, freq='M')
+        dates = pd.date_range('2024-01-01', periods=3, freq='ME')
         features = create_time_features(dates, ['month_name'])
 
         assert 'month_name' in features.columns
@@ -297,7 +297,7 @@ class TestCreateTimeFeatures:
 
     def test_quarter_feature(self):
         """Test quarter feature."""
-        dates = pd.date_range('2024-01-01', periods=12, freq='M')
+        dates = pd.date_range('2024-01-01', periods=12, freq='ME')
         features = create_time_features(dates, ['quarter'])
 
         assert 'quarter' in features.columns
@@ -318,7 +318,7 @@ class TestCreateTimeFeatures:
 
     def test_hour_feature(self):
         """Test hour feature with datetime."""
-        dates = pd.date_range('2024-01-01 00:00', periods=24, freq='H')
+        dates = pd.date_range('2024-01-01 00:00', periods=24, freq='h')
         features = create_time_features(dates, ['hour'])
 
         assert 'hour' in features.columns

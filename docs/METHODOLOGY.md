@@ -63,12 +63,13 @@ are enforced by unit tests:
 - **randomized query-time training**: query times are sampled in (0, horizon] each
   batch, so off-grid accuracy is trained rather than emergent.
 
-Measured behavior (validation runs, June 2026; capability gates live in
-`tests/test_continuous.py`): grid MASE
-0.91 (beats seasonal-naive); fractional-time MAE 1.21 versus noise-free truth — on par
-with interpolating grid predictions (1.20), so we claim the *capability* and the
-per-time uncertainty, not an accuracy edge; queried beyond the trained horizon
-(12.5–16 on a model trained to 12) the continuation stays coherent (MAE 2.37).
+Both are enforced by unit tests in `tests/test_continuous.py`: the mandatory
+cycle-expressiveness gate (forecast variance must reach at least 60% of the
+target's within-horizon variance on cyclic data — the production decoder passes;
+the prototype did not), and a predict_when time-window coverage gate (>= 85% on the
+held-out sunspots fixture — measured passing). We claim the *capability* of
+arbitrary-time forecasting and its per-time uncertainty, not an accuracy edge over
+interpolating grid forecasts.
 
 ## 4. Uncertainty: conformal prediction, in value space and in time space
 
@@ -82,15 +83,18 @@ robustness.
 Two methodological findings from our own validation are now part of the package:
 
 **Time-space calibration.** Mapping value-space conformal bands onto the time axis
-miscalibrates when trajectories are steep or flat: on a real test fixture this gave 32%
-coverage at a 95% target. Calibrating directly on **crossing-time errors** — taking
-quantiles of `t_pred − t_actual` on a calibration split — restored coverage to 100% on
-the same fixture and is the method behind every `predict_when` window we publish.
+miscalibrates when trajectories are steep or flat. Calibrating directly on
+**crossing-time errors** — taking quantiles of `t_pred − t_actual` on a calibration
+split — is the method behind every `predict_when` window we publish; its coverage is
+unit-tested at >= 85% on the held-out sunspots fixture.
 
 **Asymmetric windows.** Crossing-time errors are systematically signed (Section 5), so
 we calibrate the 5th and 95th percentiles of *signed* errors rather than a symmetric
-absolute quantile. On the NASA battery audit this took coverage from 68% (symmetric) to
-92% pooled at a 90% target.
+absolute quantile. Measured on the NASA battery audit, the calibrated windows reach
+96% coverage at a 90% target on the typical held-out cell; on cross-unit transfer to
+unseen engines coverage degrades below target (40–54%), which we report in
+[experiment_results.md](experiment_results.md) and display in the trust panel rather
+than hide.
 
 ## 5. Event-time forecasting: `predict_when`
 
@@ -115,12 +119,13 @@ than deriving it from marginal bands.
 **Censoring.** "No crossing within the horizon" is a first-class, validated answer
 (returned with `censored=True`), not a failure mode.
 
-**The operational rule.** Across our largest audit, the point estimate showed a
-systematic *late* bias (indicator smoothing lag); the asymmetric calibration absorbs
-it. Consequently the API returns `act_by` — the window's earliest edge — as a
-first-class field, and the documented rule is: **schedule by `act_by`, never by the
-point estimate.** On a real 86-engine fleet snapshot, the act-by date was early enough
-for 91% of engines.
+**The operational rule.** Across our audits the point estimate is systematically
+biased on degradation indicators (it saturates toward mid-horizon for distant
+events), and cross-unit window coverage runs below target. Consequently the API
+returns `act_by` — the window's earliest edge — as a first-class field, and the
+documented rule is: **schedule by `act_by`, never by the point estimate.** In the
+measured FD002 fleet snapshot the calibrated windows covered 81% of actual
+crossings.
 
 ## 6. Evaluation protocol
 
@@ -138,26 +143,28 @@ is leave-unit-out (unseen batteries, unseen engines). Point-forecast accuracy is
 reported as MAE relative to seasonal-naive, i.e. MASE-style scaling (Hyndman & Koehler,
 2006).
 
-### Verified results (June 2026)
+### Verified results (measured June 2026)
 
-| Benchmark (real NASA data, held-out) | APDTFlow | Linear | Persistence | Coverage | False alarms |
+| Audit (real NASA data, held-out units) | APDTFlow | Linear | Persistence | Coverage (90% target) | False alarms |
 |---|---|---|---|---|---|
-| Battery EOL, 3 cells, leave-one-battery-out (Saha & Goebel, 2007) | **3.9 cycles** | 9.3 | 15.5 | 92% (90% target) | — |
-| Turbofan C-MAPSS FD001, 40 unseen engines (Saxena et al., 2008) | **10.2** | 15.8 | 19.5 | 87% | 1.4% |
-| FD001, multivariate 5-sensor fusion, same engines | **5.2** | 15.8 | 19.5 | 85% | 6.6% |
-| C-MAPSS FD002, 110 unseen engines, 6 operating regimes | **7.5** | 15.8 | 20.1 | 89% | 1.6% |
+| Battery EOL, 3 cells, leave-one-battery-out (Saha & Goebel, 2007) | **8.3** (2.8 typical cell) | 9.7 | 15.4 | 96% typical cell | — |
+| Turbofan C-MAPSS FD001, 40 unseen engines (Saxena et al., 2008) | **8.3** | 8.7 | 11.5 | 40% | 0.6% |
+| FD001, multivariate 5-sensor fusion, same engines | 10.1 full / **5.9 caught** | 8.7 | 11.5 | 26% | 0.0% |
+| C-MAPSS FD002, 110 unseen engines, 6 operating regimes | 9.2 (**6.8** matched) | **8.1** | 11.3 | 54% | 0.0% |
 
-Honest nuances we publish alongside the wins: on the matched subsets where linear
-extrapolation also yields a valid estimate, its point error can be lower (FD001: 6.4 vs
-9.3; FD002: 6.0 vs 7.1). APDTFlow's decisive advantages are full-event robustness,
-calibration, and near-zero false alarms — the properties that matter in production,
-where alarm fatigue, not point error, is the dominant failure mode. The base
-forecaster's general accuracy is reported honestly in the README: it beats
-seasonal-naive on 4 of 6 benchmark domains and is on par with Holt-Winters; for pure
-grid accuracy, tuned deep models and time-series foundation models (Chronos-2, TimesFM
-2.5, Moirai-2) may be stronger. None of those models, being grid/patch-based, offers
-`predict_at` at arbitrary timestamps or calibrated `predict_when` — the two
-capabilities are complementary.
+Timing MAE in cycles on the full event set (censored answers scored at the horizon);
+every row is reproduced by a committed script. We publish the losses with the wins:
+linear extrapolation beats the model on FD002's full event set, multivariate fusion
+trades coverage for sharpness rather than dominating, and cross-unit window coverage
+runs below its target on the engine audits. APDTFlow's measured advantages are
+timing wins on battery and FD001 (including FD001's matched subset, 8.5 vs 9.7),
+near-zero false alarms everywhere (0/2,638 no-crossing windows on FD002), and
+beating persistence by 2–7 cycles on every audit. The base forecaster's general
+accuracy is reported honestly in the README: it beats seasonal-naive on 3 of 6
+benchmark domains (parity on a 4th); for pure grid accuracy, tuned deep models and
+time-series foundation models (Chronos-2, TimesFM 2.5, Moirai-2) may be stronger.
+None of those models, being grid/patch-based, offers `predict_at` at arbitrary
+timestamps or calibrated `predict_when` — the capabilities are complementary.
 
 ## 7. Negative results — what we tested and do not ship
 
@@ -193,8 +200,9 @@ deviation across inputs = 0.0000). This is why earlier versions produced flat
 forecasts, and it invalidated all previously published plots.
 
 v0.4.0 fixed the defect (additive embedding, full-trajectory decoder memory,
-sequence-aware fusion, residual skip; synthetic benchmark MAE 10.16 → 0.755, MASE
-0.605) and added learning regression tests (`tests/test_learning.py`) — including an
+sequence-aware fusion, residual skip; the fixed model beats seasonal-naive on the
+synthetic regression benchmark, MAE ratio 0.59, and on real daily-temperature data,
+0.73) and added learning regression tests (`tests/test_learning.py`) — including an
 input-sensitivity test — so this class of bug cannot silently recur. The before/after
 evidence is committed at `assets/images/apdtflow_fix_proof.png` and
 `assets/images/apdtflow_v3_final_proof.png`. We keep this section public on purpose:

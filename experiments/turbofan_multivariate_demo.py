@@ -16,7 +16,7 @@ experiments/results/turbofan_when.json — run turbofan_when_demo.py first.
 
 Outputs:
   * experiments/results/turbofan_multivariate.json
-  * assets/images/apdtflow_multivariate_win.png (side-by-side bars + learned
+  * assets/images/apdtflow_multivariate_audit.png (side-by-side bars + learned
     sensor-importance weights)
 
 Usage:
@@ -331,8 +331,8 @@ def main() -> None:
     print(f"\nwrote {out_json.relative_to(REPO)}")
 
     plot_comparison(uni, metrics, importance,
-                    IMAGES_DIR / "apdtflow_multivariate_win.png")
-    print("wrote assets/images/apdtflow_multivariate_win.png")
+                    IMAGES_DIR / "apdtflow_multivariate_audit.png")
+    print("wrote assets/images/apdtflow_multivariate_audit.png")
 
 
 if __name__ == "__main__":

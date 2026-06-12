@@ -79,11 +79,13 @@ Reproduce: `python experiments/battery_eol_demo.py`, `experiments/turbofan_when_
 
 ![fd002](assets/images/apdtflow_fd002_robustness.png)
 
-Adding sensors helps — a learned health-indicator fusion layer
-(`fit(..., feature_cols=sensors)`) improves event timing and exposes interpretable
-sensor weights via `model.sensor_importance_`:
+Multivariate sensor fusion (`fit(..., feature_cols=sensors)`) exposes
+interpretable sensor weights via `model.sensor_importance_`, and — measured on the
+same audit — trades coverage for sharpness: when the fused model commits to a
+timing it is markedly more accurate (caught-event error 5.9 vs 8.3 cycles, zero
+false alarms), but it commits far less often. Published as measured:
 
-![multivariate](assets/images/apdtflow_multivariate_win.png)
+![multivariate](assets/images/apdtflow_multivariate_audit.png)
 
 ## Trust panel — this package tells you its own limits
 

@@ -109,7 +109,24 @@ beyond what the training engines support. Both numbers are printed by the script
 `fit(feature_cols=[s12, s4, s7, s15])` fusing five sensors into a learned health
 indicator.
 
-<!--PENDING:fd001_mv_results_section-->
+Measured 2026-06-12, same audit and engines as §3.2:
+
+| Metric | Univariate | Multivariate (5-sensor fusion) |
+|---|---|---|
+| Timing MAE, full event set (cycles) | **8.33** | 10.11 |
+| Timing MAE, caught events (cycles) | 8.34 | **5.85** |
+| Event catch rate | **26.6%** | 7.0% |
+| False alarms | 0.64% | **0.00%** |
+| 90%-window coverage | 40.3% | 26.3% |
+
+**Honest reading:** the multivariate fusion did *not* reproduce the across-the-board
+improvement we hoped for. It makes the model sharper where it speaks (caught-event
+error drops by 30%, false alarms reach zero) at the cost of much higher
+conservatism, and full-event error does not improve. The learned fusion weights
+remain a useful interpretability artifact (`sensor_importance_`). Both sides of the
+trade-off are printed by the script and shown in the figure.
+
+![multivariate](../assets/images/apdtflow_multivariate_audit.png)
 
 ### 3.4 Robustness under shifting operating regimes, C-MAPSS FD002
 

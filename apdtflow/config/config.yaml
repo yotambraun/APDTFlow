@@ -15,3 +15,6 @@ num_epochs: 15
 checkpoint_dir: "checkpoints"
 use_embedding: true
 embed_dim: 16
+loss_type: "mse"
+ode_method: "rk4"
+decoder_type: "transformer"

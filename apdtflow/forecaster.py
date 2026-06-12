@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, TensorDataset
-from typing import Optional, Union, List, Tuple, Dict
+from typing import Callable, Optional, Union, List, Tuple, Dict
 import warnings
 from tqdm import tqdm
 
@@ -14,8 +14,21 @@ from .models.apdtflow import APDTFlow
 from .models.transformer_forecaster import TransformerForecaster
 from .models.tcn_forecaster import TCNForecaster
 from .models.ensemble_forecaster import EnsembleForecaster
-from .conformal import SplitConformalPredictor, AdaptiveConformalPredictor
+from .conformal import (
+    AdaptiveConformalPredictor,
+    SplitConformalPredictor,
+    crossing_time_quantile,
+    per_step_quantiles,
+)
+from .event_time import (
+    PredictWhenResult,
+    batch_first_crossing_times,
+    first_crossing_time,
+)
+from .logger_util import get_logger
 from .preprocessing.categorical_encoder import CategoricalEncoder
+
+logger = get_logger("apdtflow.forecaster")
 
 
 class APDTFlowForecaster:
@@ -84,6 +97,9 @@ class APDTFlowForecaster:
         device: Optional[str] = None,
         use_embedding: bool = True,
         verbose: bool = True,
+        loss_type: str = 'mse',
+        ode_method: str = 'rk4',
+        decoder_type: str = 'transformer',
         # NEW: Exogenous variables support
         exog_fusion_type: str = 'gated',
         # NEW: Conformal prediction support
@@ -108,6 +124,21 @@ class APDTFlowForecaster:
         self.num_epochs = num_epochs
         self.verbose = verbose
         self.use_embedding = use_embedding
+
+        # Training loss and solver configuration (v0.4.0)
+        if loss_type not in ('mse', 'nll'):
+            raise ValueError(f"loss_type must be 'mse' or 'nll', got {loss_type!r}")
+        if ode_method not in ('rk4', 'dopri5_adjoint'):
+            raise ValueError(
+                f"ode_method must be 'rk4' or 'dopri5_adjoint', got {ode_method!r}"
+            )
+        if decoder_type not in ('transformer', 'continuous'):
+            raise ValueError(
+                f"decoder_type must be 'transformer' or 'continuous', got {decoder_type!r}"
+            )
+        self.loss_type = loss_type
+        self.ode_method = ode_method
+        self.decoder_type = decoder_type
 
         # Early stopping
         self.early_stopping = early_stopping
@@ -135,6 +166,22 @@ class APDTFlowForecaster:
         self.conformal_method = conformal_method
         self.calibration_split = calibration_split
         self.conformal_predictor: Optional[Union[SplitConformalPredictor, AdaptiveConformalPredictor]] = None
+
+        # Multivariate input (v0.4.0): set in fit(feature_cols=...).
+        self.feature_cols_: Optional[List[str]] = None
+        self.feature_means_: Optional[np.ndarray] = None
+        self.feature_stds_: Optional[np.ndarray] = None
+
+        # Continuous-time state (v0.4.0): per-step calibration data for
+        # predict_at intervals and predict_when time-window calibration.
+        self._calib_X_: Optional[torch.Tensor] = None
+        self._calib_exog_: Optional[torch.Tensor] = None
+        self._calib_targets_grid_: Optional[np.ndarray] = None
+        self._calib_residuals_: Optional[np.ndarray] = None
+        self._calib_anchor_: Optional[np.ndarray] = None
+        self._when_cache_: Dict = {}
+        self.last_date_: Optional[pd.Timestamp] = None
+        self.freq_delta_: Optional[pd.Timedelta] = None
 
         # Auto-detect device
         if device is None:
@@ -170,9 +217,13 @@ class APDTFlowForecaster:
                 'hidden_dim': self.hidden_dim,
                 'output_dim': 1,
                 'forecast_horizon': self.forecast_horizon,
+                'history_length': self.history_length,
                 'use_embedding': self.use_embedding,
                 'num_exog_features': self.num_exog_features_,
-                'exog_fusion_type': self.exog_fusion_type
+                'exog_fusion_type': self.exog_fusion_type,
+                'ode_method': self.ode_method,
+                'decoder_type': self.decoder_type,
+                'n_input_channels': 1 + len(self.feature_cols_ or [])
             }
             model = APDTFlow(**model_params)
         elif self.model_type == 'transformer':
@@ -201,6 +252,7 @@ class APDTFlowForecaster:
                 hidden_dim=self.hidden_dim,
                 output_dim=1,
                 forecast_horizon=self.forecast_horizon,
+                history_length=self.history_length,
                 use_embedding=self.use_embedding,
                 num_exog_features=self.num_exog_features_,
                 exog_fusion_type=self.exog_fusion_type
@@ -332,7 +384,7 @@ class APDTFlowForecaster:
 
             if np.isnan(arr).any():
                 nan_count = np.isnan(arr).sum()
-                nan_indices = np.where(np.isnan(arr))[0].tolist()
+                nan_indices = list(np.where(np.isnan(arr))[0])
                 raise ValueError(
                     f"Input array contains {nan_count} NaN values at indices: "
                     f"{nan_indices[:10]}{'...' if len(nan_indices) > 10 else ''}"
@@ -377,6 +429,10 @@ class APDTFlowForecaster:
                 raise ValueError("target_col must be specified for DataFrame input")
             if date_col and date_col in data.columns:
                 data = data.sort_values(date_col)
+                dates = pd.to_datetime(data[date_col])
+                self.last_date_ = dates.iloc[-1]
+                if len(dates) > 1:
+                    self.freq_delta_ = pd.Timedelta(np.median(np.diff(dates.values)))
             series = data[target_col].values
 
             # Handle exogenous variables (including categorical)
@@ -429,29 +485,79 @@ class APDTFlowForecaster:
                 f"got {len(series_norm)}"
             )
 
-        X = torch.tensor(X_list, dtype=torch.float32).unsqueeze(1)
-        y = torch.tensor(y_list, dtype=torch.float32).unsqueeze(1)
+        X = torch.tensor(np.array(X_list), dtype=torch.float32).unsqueeze(1)
+        y = torch.tensor(np.array(y_list), dtype=torch.float32).unsqueeze(1)
 
         # Store last sequence for prediction
         self.last_sequence_ = series_norm[-self.history_length:]
 
         if exog_norm is not None:
-            exog_X = torch.tensor(exog_X_list, dtype=torch.float32).transpose(1, 2)
-            exog_y = torch.tensor(exog_y_list, dtype=torch.float32).transpose(1, 2)
+            exog_X = torch.tensor(np.array(exog_X_list), dtype=torch.float32).transpose(1, 2)
+            exog_y = torch.tensor(np.array(exog_y_list), dtype=torch.float32).transpose(1, 2)
             self.last_exog_sequence_ = exog_norm[-self.history_length:]
             return X, y, exog_X, exog_y
 
         return X, y
+
+    def _prepare_data_multivariate(
+        self,
+        data: pd.DataFrame,
+        target_col: str,
+        date_col: Optional[str] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Prepare multichannel training data for fit(feature_cols=...).
+
+        Channel 0 is the target; remaining channels are the feature
+        columns. Each channel is independently z-normalized.
+        """
+        if date_col and date_col in data.columns:
+            data = data.sort_values(date_col)
+            dates = pd.to_datetime(data[date_col])
+            self.last_date_ = dates.iloc[-1]
+            if len(dates) > 1:
+                self.freq_delta_ = pd.Timedelta(np.median(np.diff(dates.values)))
+
+        channels = [target_col] + list(self.feature_cols_ or [])
+        matrix = data[channels].to_numpy(dtype=float).T  # (C, N)
+        means = matrix.mean(axis=1)
+        stds = matrix.std(axis=1)
+        stds[stds == 0] = 1.0
+        norm = (matrix - means[:, None]) / stds[:, None]
+
+        self.feature_means_ = means
+        self.feature_stds_ = stds
+        self.scaler_mean_ = float(means[0])
+        self.scaler_std_ = float(stds[0])
+
+        total_length = self.history_length + self.forecast_horizon
+        n_windows = norm.shape[1] - total_length + 1
+        if n_windows <= 0:
+            raise ValueError(
+                f"Data too short. Need at least {total_length} points, "
+                f"got {norm.shape[1]}"
+            )
+        X = np.stack([norm[:, i:i + self.history_length] for i in range(n_windows)])
+        y = np.stack([
+            norm[0, i + self.history_length:i + total_length]
+            for i in range(n_windows)
+        ])
+        self.last_sequence_ = norm[:, -self.history_length:]
+        return (
+            torch.tensor(X, dtype=torch.float32),
+            torch.tensor(y, dtype=torch.float32).unsqueeze(1),
+        )
 
     def fit(
         self,
         data: Union[pd.DataFrame, np.ndarray],
         target_col: Optional[str] = None,
         date_col: Optional[str] = None,
+        feature_cols: Optional[List[str]] = None,
         exog_cols: Optional[List[str]] = None,
         future_exog_cols: Optional[List[str]] = None,
         categorical_cols: Optional[List[str]] = None,
-        future_categorical_cols: Optional[List[str]] = None
+        future_categorical_cols: Optional[List[str]] = None,
+        log_callback: Optional[Callable] = None
     ):
         """
         Fit the forecasting model.
@@ -464,6 +570,13 @@ class APDTFlowForecaster:
             Name of target column if data is DataFrame
         date_col : str, optional
             Name of date column if data is DataFrame
+        feature_cols : list of str, optional
+            Additional input series channels (e.g. sensor columns) fused
+            into a learned health indicator in front of the pipeline
+            (NEW in v0.4.0). The forecast target remains ``target_col``;
+            inspect the learned fusion weights via ``sensor_importance_``.
+            Requires ``model_type='apdtflow'``; cannot be combined with
+            ``exog_cols`` or ``categorical_cols``.
         exog_cols : list of str, optional
             Names of numerical exogenous variable columns (NEW in v0.2.0)
         future_exog_cols : list of str, optional
@@ -479,8 +592,8 @@ class APDTFlowForecaster:
             Fitted forecaster
         """
         if self.verbose:
-            print(f"Fitting {self.model_type} model...")
-            print(f"Device: {self.device}")
+            logger.info(f"Fitting {self.model_type} model...")
+            logger.info(f"Device: {self.device}")
 
         # Validate model_type
         if self.model_type == 'ensemble':
@@ -488,6 +601,23 @@ class APDTFlowForecaster:
                 "model_type='ensemble' is not currently supported in APDTFlowForecaster. "
                 "Please use 'apdtflow', 'transformer', or 'tcn'."
             )
+
+        if feature_cols:
+            if self.model_type != 'apdtflow':
+                raise ValueError(
+                    "feature_cols is only supported with model_type='apdtflow'."
+                )
+            if exog_cols or categorical_cols:
+                raise ValueError(
+                    "feature_cols cannot be combined with exog_cols or "
+                    "categorical_cols."
+                )
+            if not isinstance(data, pd.DataFrame):
+                raise ValueError("feature_cols requires DataFrame input")
+            missing = [c for c in feature_cols + [target_col] if c not in data.columns]
+            if missing:
+                raise ValueError(f"Columns not found in data: {missing}")
+            self.feature_cols_ = list(feature_cols)
 
         # Validate data before proceeding
         self._validate_data(data, target_col, date_col, exog_cols, categorical_cols)
@@ -527,9 +657,9 @@ class APDTFlowForecaster:
             num_categorical_features = categorical_encoded.shape[1]
 
             if self.verbose:
-                print(f"Encoded {len(categorical_cols)} categorical columns into {num_categorical_features} features")
-                print(f"  Categorical columns: {categorical_cols}")
-                print(f"  Encoding: {self.categorical_encoding}")
+                logger.info(f"Encoded {len(categorical_cols)} categorical columns into {num_categorical_features} features")
+                logger.info(f"  Categorical columns: {categorical_cols}")
+                logger.info(f"  Encoding: {self.categorical_encoding}")
 
             # Add encoded categorical features to exog features
             if exog_cols:
@@ -546,7 +676,7 @@ class APDTFlowForecaster:
                 self.has_numerical_exog_ = True  # Track that we have true numerical exog
                 self.num_exog_features_ = combined_exog.shape[1]
                 if self.verbose:
-                    print(f"Combined {len(exog_cols)} numerical + {num_categorical_features} categorical = {self.num_exog_features_} total exogenous features")
+                    logger.info(f"Combined {len(exog_cols)} numerical + {num_categorical_features} categorical = {self.num_exog_features_} total exogenous features")
             else:
                 # Only categorical features (treat as exog)
                 self._combined_exog_data = categorical_encoded
@@ -555,7 +685,7 @@ class APDTFlowForecaster:
                 self.has_numerical_exog_ = False  # Only categorical, no numerical exog
                 self.num_exog_features_ = categorical_encoded.shape[1]
                 if self.verbose:
-                    print(f"Using {self.num_exog_features_} categorical features as exogenous variables")
+                    logger.info(f"Using {self.num_exog_features_} categorical features as exogenous variables")
                 exog_cols = []  # Will use combined data instead
 
         # Check exogenous variables
@@ -570,27 +700,38 @@ class APDTFlowForecaster:
             self.has_numerical_exog_ = True  # True numerical exogenous variables
             self.num_exog_features_ = len(exog_cols)
             if self.verbose:
-                print(f"Using {self.num_exog_features_} exogenous features: {exog_cols}")
+                logger.info(f"Using {self.num_exog_features_} exogenous features: {exog_cols}")
                 if future_exog_cols:
-                    print(f"  Future-known features: {future_exog_cols}")
+                    logger.info(f"  Future-known features: {future_exog_cols}")
 
         if isinstance(data, pd.DataFrame):
             self.data_df_ = data.copy()
 
         # Prepare data
-        data_output = self._prepare_data(data, target_col, date_col)
+        data_output: Union[
+            Tuple[torch.Tensor, torch.Tensor],
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+        ]
+        if self.feature_cols_:
+            assert target_col is not None
+            assert isinstance(data, pd.DataFrame)
+            data_output = self._prepare_data_multivariate(data, target_col, date_col)
+        else:
+            data_output = self._prepare_data(data, target_col, date_col)
+        exog_X: Optional[torch.Tensor] = None
+        exog_y: Optional[torch.Tensor] = None
         if len(data_output) == 4:
-            X, y, exog_X, exog_y = data_output
+            X, y, exog_X, exog_y = data_output  # type: ignore[misc]
             has_exog_data = True
         else:
-            X, y = data_output
+            X, y = data_output  # type: ignore[misc]
             has_exog_data = False
 
         if self.verbose:
-            print(f"Created {len(X)} training samples")
-            print(f"Input shape: {X.shape}, Target shape: {y.shape}")
-            if has_exog_data:
-                print(f"Exog shape: {exog_X.shape}")
+            logger.info(f"Created {len(X)} training samples")
+            logger.info(f"Input shape: {X.shape}, Target shape: {y.shape}")
+            if has_exog_data and exog_X is not None:
+                logger.info(f"Exog shape: {exog_X.shape}")
 
         # Initialize model
         self.model = self._initialize_model()
@@ -608,6 +749,7 @@ class APDTFlowForecaster:
             y = y.unsqueeze(2)  # (batch, 1, forecast_horizon) -> (batch, 1, 1, forecast_horizon)
 
         if has_exog_data:
+            assert exog_X is not None and exog_y is not None
             dataset = TensorDataset(X, y, exog_X, exog_y)
         else:
             dataset = TensorDataset(X, y)
@@ -626,7 +768,7 @@ class APDTFlowForecaster:
             val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False)
 
             if self.verbose:
-                print(f"Training samples: {n_train}, Validation samples: {n_val}")
+                logger.info(f"Training samples: {n_train}, Validation samples: {n_val}")
         else:
             train_loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
             val_loader = None
@@ -668,13 +810,22 @@ class APDTFlowForecaster:
 
                     # Forward pass
                     optimizer.zero_grad()
-                    preds, pred_logvars = self.model(x_batch, t_span, exog=exog_x_batch)
-
-                    # Loss (negative log-likelihood)
-                    mse = (preds - y_batch.transpose(1, 2)) ** 2
-                    loss = torch.mean(
-                        0.5 * (mse / (pred_logvars.exp() + 1e-6)) + 0.5 * pred_logvars
-                    )
+                    if self.decoder_type == 'continuous':
+                        # Randomized-query training: off-grid accuracy is
+                        # trained, not emergent.
+                        assert isinstance(self.model, APDTFlow)
+                        loss = self.model._continuous_training_loss(
+                            x_batch, y_batch, t_span, exog=exog_x_batch
+                        )
+                    else:
+                        preds, pred_logvars = self.model(x_batch, t_span, exog=exog_x_batch)
+                        mse = (preds - y_batch.transpose(1, 2)) ** 2
+                        if self.loss_type == 'nll':
+                            loss = torch.mean(
+                                0.5 * (mse / (pred_logvars.exp() + 1e-6)) + 0.5 * pred_logvars
+                            )
+                        else:
+                            loss = mse.mean()
 
                     # Backward pass
                     loss.backward()
@@ -705,9 +856,12 @@ class APDTFlowForecaster:
                             preds, pred_logvars = self.model(x_batch, t_span, exog=exog_x_batch)
 
                             mse = (preds - y_batch.transpose(1, 2)) ** 2
-                            loss = torch.mean(
-                                0.5 * (mse / (pred_logvars.exp() + 1e-6)) + 0.5 * pred_logvars
-                            )
+                            if self.loss_type == 'nll':
+                                loss = torch.mean(
+                                    0.5 * (mse / (pred_logvars.exp() + 1e-6)) + 0.5 * pred_logvars
+                                )
+                            else:
+                                loss = mse.mean()
 
                             val_loss += loss.item() * len(x_batch)
 
@@ -731,8 +885,8 @@ class APDTFlowForecaster:
                     # Stop if patience exceeded
                     if epochs_without_improvement >= self.patience:
                         if self.verbose:
-                            print(f"\nEarly stopping at epoch {epoch + 1}")
-                            print(f"Best validation loss: {best_val_loss:.4f}")
+                            logger.info(f"\nEarly stopping at epoch {epoch + 1}")
+                            logger.info(f"Best validation loss: {best_val_loss:.4f}")
                         # Restore best model
                         if best_model_state:
                             self.model.load_state_dict(best_model_state)
@@ -740,6 +894,14 @@ class APDTFlowForecaster:
                 else:
                     # Update progress bar with training loss only
                     pbar.set_postfix({'loss': f'{avg_train_loss:.4f}'})
+
+                if log_callback is not None:
+                    metrics = {'train_loss': avg_train_loss}
+                    if self.early_stopping and val_loader is not None:
+                        metrics['val_loss'] = avg_val_loss
+                    # Works directly with mlflow.log_metrics / wandb.log:
+                    # fit(..., log_callback=lambda epoch, m: mlflow.log_metrics(m, step=epoch))
+                    log_callback(epoch, metrics)
 
         else:
             # Other models (transformer, tcn, ensemble) use their own train_model() method
@@ -753,7 +915,7 @@ class APDTFlowForecaster:
         self._is_fitted = True
 
         if self.verbose:
-            print("Training completed!")
+            logger.info("Training completed!")
 
         # Create conformal predictor if enabled (only for APDTFlow)
         if self.use_conformal:
@@ -764,12 +926,14 @@ class APDTFlowForecaster:
                 )
 
             if self.verbose:
-                print("Calibrating conformal predictor...")
+                logger.info("Calibrating conformal predictor...")
 
             # Generate calibration predictions
             self.model.eval()
             calib_preds = []
             calib_targets = []
+            calib_X_parts = []
+            calib_exog_parts = []
 
             # Create t_span for APDTFlow model
             t_span = torch.linspace(0, 1, steps=self.history_length, device=self.device)
@@ -790,6 +954,9 @@ class APDTFlowForecaster:
 
                     calib_preds.append(preds.cpu().numpy())
                     calib_targets.append(y_batch.cpu().numpy())
+                    calib_X_parts.append(x_batch.cpu())
+                    if exog_x_batch is not None:
+                        calib_exog_parts.append(exog_x_batch.cpu())
 
             calib_preds = np.concatenate(calib_preds, axis=0)
             calib_targets = np.concatenate(calib_targets, axis=0)
@@ -820,8 +987,24 @@ class APDTFlowForecaster:
                 calib_targets_denorm.reshape(-1, 1)
             )
 
+            # Per-window calibration state for predict_at intervals and
+            # predict_when time-window calibration (v0.4.0).
+            horizon = self.forecast_horizon
+            preds_grid = calib_preds_denorm.reshape(-1, horizon)
+            targets_grid = calib_targets_denorm.reshape(-1, horizon)
+            self._calib_X_ = torch.cat(calib_X_parts)
+            self._calib_exog_ = (
+                torch.cat(calib_exog_parts) if calib_exog_parts else None
+            )
+            self._calib_targets_grid_ = targets_grid
+            self._calib_residuals_ = np.abs(preds_grid - targets_grid)
+            anchor_norm = self._calib_X_[:, 0, -1].numpy()
+            assert self.scaler_mean_ is not None and self.scaler_std_ is not None
+            self._calib_anchor_ = anchor_norm * self.scaler_std_ + self.scaler_mean_
+            self._when_cache_ = {}
+
             if self.verbose:
-                print("Conformal predictor calibrated!")
+                logger.info("Conformal predictor calibrated!")
 
         return self
 
@@ -886,11 +1069,11 @@ class APDTFlowForecaster:
         with torch.no_grad():
             if self.model_type == 'apdtflow':
                 # APDTFlow-specific prediction
-                # Prepare input
-                x = torch.tensor(
-                    self.last_sequence_,
-                    dtype=torch.float32
-                ).unsqueeze(0).unsqueeze(0).to(self.device)
+                # Prepare input (multichannel when fitted with feature_cols)
+                last = np.asarray(self.last_sequence_)
+                x = torch.tensor(last, dtype=torch.float32)
+                x = x.unsqueeze(0) if last.ndim == 2 else x.unsqueeze(0).unsqueeze(0)
+                x = x.to(self.device)
 
                 t_span = torch.linspace(
                     0, 1,
@@ -963,6 +1146,470 @@ class APDTFlowForecaster:
                 return preds_denorm, uncertainty
             else:
                 return preds_denorm
+
+    # ------------------------------------------------------------------
+    # Continuous-time API (v0.4.0): predict_at and predict_when
+    # ------------------------------------------------------------------
+
+    def _require_continuous(self, method_name: str):
+        if not self._is_fitted:
+            raise RuntimeError("Model must be fitted before predicting")
+        if self.model_type != 'apdtflow' or self.decoder_type != 'continuous':
+            raise RuntimeError(
+                f"{method_name} requires decoder_type='continuous'. Construct the "
+                f"forecaster with APDTFlowForecaster(decoder_type='continuous', ...) "
+                f"and refit."
+            )
+
+    def _offsets_from_timestamps(self, timestamps) -> np.ndarray:
+        """Convert timestamps (or floats) to positive step offsets."""
+        arr = np.asarray(timestamps)
+        if arr.dtype.kind in 'fiu':
+            offsets = arr.astype(float).reshape(-1)
+        else:
+            if self.last_date_ is None or self.freq_delta_ is None:
+                raise ValueError(
+                    "Datetime timestamps require the model to be fitted with a "
+                    "date_col; otherwise pass float step offsets."
+                )
+            ts = pd.to_datetime(
+                pd.Series(np.asarray(timestamps).reshape(-1)), format='mixed'
+            )
+            offsets = ((ts - self.last_date_) / self.freq_delta_).to_numpy(dtype=float)
+        if (offsets <= 0).any():
+            raise ValueError(
+                "All query times must be strictly after the end of the fitted "
+                "series (offsets must be > 0)."
+            )
+        return offsets
+
+    def _steps_to_time(self, tau: float):
+        """Convert a float step offset to a timestamp when date-fitted."""
+        if self.last_date_ is not None and self.freq_delta_ is not None:
+            return self.last_date_ + tau * self.freq_delta_
+        return float(tau)
+
+    def _exog_tensor_for_window(self, exog_future, steps: int):
+        """Build the exogenous tensor for the last fitted window."""
+        if not self.has_exog_:
+            return None
+        if self.has_numerical_exog_ and exog_future is None:
+            raise ValueError(
+                "Model was trained with numerical exogenous variables. "
+                "Please provide exog_future."
+            )
+        if exog_future is None:
+            return None
+        if isinstance(exog_future, pd.DataFrame):
+            exog_array = exog_future[self.future_exog_cols_ or self.exog_cols_].values
+        else:
+            exog_array = np.array(exog_future)
+        exog_norm = (exog_array - self.exog_mean_) / self.exog_std_
+        if self.last_exog_sequence_ is not None:
+            full_exog = np.vstack([self.last_exog_sequence_, exog_norm[:steps]])
+            exog_input = full_exog[:self.history_length]
+        else:
+            exog_input = exog_norm[:self.history_length]
+        return torch.tensor(exog_input, dtype=torch.float32).T.unsqueeze(0).to(self.device)
+
+    def _trajectory_at(self, offsets: np.ndarray, exog_future=None) -> np.ndarray:
+        """Denormalized mean-trajectory values at float step offsets."""
+        assert self.model is not None
+        self.model.eval()
+        last = np.asarray(self.last_sequence_)
+        x = torch.tensor(last, dtype=torch.float32)
+        x = x.unsqueeze(0) if last.ndim == 2 else x.unsqueeze(0).unsqueeze(0)
+        x = x.to(self.device)
+        t_span = torch.linspace(0, 1, steps=self.history_length, device=self.device)
+        exog_tensor = self._exog_tensor_for_window(exog_future, self.forecast_horizon)
+        taus = torch.tensor(offsets, dtype=torch.float32, device=self.device)
+        assert isinstance(self.model, APDTFlow)
+        with torch.no_grad():
+            values, _ = self.model.forward_at(x, t_span, taus, exog=exog_tensor)
+        values_np = values.squeeze(0).squeeze(-1).cpu().numpy()
+        return values_np * self.scaler_std_ + self.scaler_mean_
+
+    def _interp_step_quantiles(self, offsets: np.ndarray, alpha: float) -> np.ndarray:
+        """Per-step conformal quantiles interpolated across fractional offsets."""
+        if self._calib_residuals_ is None:
+            raise RuntimeError(
+                "Conformal calibration data is unavailable. Fit with "
+                "use_conformal=True to obtain calibrated intervals."
+            )
+        grid_q = per_step_quantiles(self._calib_residuals_, alpha)
+        grid = np.arange(1, self.forecast_horizon + 1, dtype=float)
+        # Beyond the horizon the last step's quantile is used (documented).
+        return np.interp(offsets, grid, grid_q)
+
+    def predict_at(
+        self,
+        timestamps,
+        alpha: float = 0.05,
+        exog_future: Optional[Union[pd.DataFrame, np.ndarray]] = None,
+    ):
+        """Forecast the series value at arbitrary moments in time.
+
+        Requires ``decoder_type='continuous'``. Accepts datetime-like
+        timestamps (when fitted with a ``date_col``) or float step offsets,
+        including fractional steps and times beyond the trained horizon.
+
+        Parameters
+        ----------
+        timestamps : sequence of datetime-like or float
+            Times to forecast at. Floats are offsets in forecast steps
+            (1.0 = one step past the end of the fitted series).
+        alpha : float, default=0.05
+            Miscoverage level for conformal intervals.
+        exog_future : DataFrame or array, optional
+            Future exogenous values (required if fitted with numerical exog).
+
+        Returns
+        -------
+        values : ndarray
+            Forecast values, in the original scale.
+        (values, lower, upper) : tuple of ndarray
+            When the model was fitted with ``use_conformal=True``: values
+            with per-step conformal intervals interpolated across the
+            queried times.
+        """
+        self._require_continuous("predict_at")
+        offsets = self._offsets_from_timestamps(timestamps)
+        values = self._trajectory_at(offsets, exog_future=exog_future)
+        if self.use_conformal and self._calib_residuals_ is not None:
+            q = self._interp_step_quantiles(offsets, alpha)
+            return values, values - q, values + q
+        return values
+
+    def _dense_offsets(self, n_points: int = 400) -> np.ndarray:
+        horizon = float(self.forecast_horizon)
+        return np.linspace(horizon / n_points, horizon, n_points)
+
+    def _batch_crossing_times(
+        self,
+        X: torch.Tensor,
+        exog: Optional[torch.Tensor],
+        threshold: float,
+        direction: str,
+    ) -> np.ndarray:
+        """Predicted first-crossing times for a batch of input windows.
+
+        ``X`` holds normalized windows of shape ``(n, 1, history_length)``;
+        returns crossing times in forecast steps with ``np.nan`` where the
+        mean trajectory never crosses within the horizon. Used by the
+        calibration machinery and by the audit harness in ``experiments/``.
+        """
+        assert self.model is not None
+        taus = self._dense_offsets()
+        taus_t = torch.tensor(taus, dtype=torch.float32, device=self.device)
+        t_span = torch.linspace(0, 1, steps=self.history_length, device=self.device)
+        assert isinstance(self.model, APDTFlow)
+        self.model.eval()
+
+        pred_traj_parts = []
+        with torch.no_grad():
+            for start in range(0, len(X), 256):
+                xb = X[start:start + 256].to(self.device)
+                eb = None
+                if exog is not None:
+                    eb = exog[start:start + 256].to(self.device)
+                vals, _ = self.model.forward_at(xb, t_span, taus_t, exog=eb)
+                pred_traj_parts.append(vals.squeeze(-1).cpu().numpy())
+        pred_traj = np.concatenate(pred_traj_parts, axis=0)
+        pred_traj = pred_traj * self.scaler_std_ + self.scaler_mean_
+        return batch_first_crossing_times(taus, pred_traj, threshold, direction)
+
+    def _crossing_calibration(self, threshold: float, direction: str, alpha: float):
+        """Signed crossing-time error quantiles on the calibration split.
+
+        Returns ``(lo, hi, n_crossings)``; cached per
+        ``(threshold, direction, alpha)``.
+        """
+        key = (round(float(threshold), 9), direction, round(float(alpha), 9))
+        if key in self._when_cache_:
+            return self._when_cache_[key]
+        assert self.model is not None
+        if self._calib_X_ is None or self._calib_targets_grid_ is None:
+            raise RuntimeError(
+                "predict_when requires conformal calibration data; fit with "
+                "use_conformal=True."
+            )
+
+        t_pred = self._batch_crossing_times(
+            self._calib_X_, self._calib_exog_, threshold, direction
+        )
+
+        # Actual crossing times from the (denormalized) target grid,
+        # anchored at offset 0 with the last observed input value.
+        assert self._calib_anchor_ is not None
+        anchors = self._calib_anchor_.reshape(-1, 1)
+        actual_grid = np.concatenate([anchors, self._calib_targets_grid_], axis=1)
+        grid_times = np.arange(0, self.forecast_horizon + 1, dtype=float)
+        t_actual = batch_first_crossing_times(
+            grid_times, actual_grid, threshold, direction
+        )
+
+        both = ~np.isnan(t_pred) & ~np.isnan(t_actual)
+        errors = t_pred[both] - t_actual[both]
+        n_crossings = int(both.sum())
+        if n_crossings > 0:
+            lo, hi = crossing_time_quantile(errors, alpha)
+        else:
+            lo, hi = np.nan, np.nan
+        result = (lo, hi, n_crossings)
+        self._when_cache_[key] = result
+        return result
+
+    def predict_when(
+        self,
+        threshold: float,
+        direction: str = 'above',
+        mode: str = 'expected',
+        alpha: float = 0.05,
+        exog_future: Optional[Union[pd.DataFrame, np.ndarray]] = None,
+    ) -> PredictWhenResult:
+        """Forecast WHEN the series will cross a threshold.
+
+        Requires ``decoder_type='continuous'`` and ``use_conformal=True``.
+
+        Two modes, answering different questions:
+
+        - ``mode='expected'`` (default): the first crossing of the mean
+          trajectory, with a time window calibrated on crossing-time errors
+          from the calibration split (asymmetric signed-error quantiles,
+          which absorb systematic timing bias). For forecastable trends and
+          cycles.
+        - ``mode='risk'``: the first time the ``alpha``-level conformal
+          band touches the threshold — the earliest moment the event
+          becomes plausible. High recall, valid early bound; for noisy
+          series and safety thresholds.
+
+        Operational rule: never act on the point estimate ``eta`` — the
+        point estimate carries a systematic late bias on degradation data.
+        Schedule by ``result.act_by`` (the window's early edge).
+
+        Uncertainty here never derives from the model's raw log-variance
+        head (untrained under MSE loss); it always comes from conformal
+        calibration.
+
+        Parameters
+        ----------
+        threshold : float
+            Threshold level, in the original data scale.
+        direction : {'above', 'below'}, default='above'
+            Crossing direction.
+        mode : {'expected', 'risk'}, default='expected'
+        alpha : float, default=0.05
+            Miscoverage level of the time window (0.05 -> 95%). This is the
+            sensitivity knob: smaller alpha widens windows and earlier
+            act-by dates (fewer missed events, more false alarms).
+        exog_future : DataFrame or array, optional
+            Future exogenous values (required if fitted with numerical exog).
+
+        Returns
+        -------
+        PredictWhenResult
+            With fields ``eta``, ``earliest``, ``latest``, ``act_by``,
+            ``censored``, ``low_confidence``. Iterable as
+            ``(eta, earliest, latest)``. Times are timestamps when the model
+            was fitted with a ``date_col``, otherwise float step offsets.
+            If no crossing occurs within the horizon, ``eta`` is the horizon
+            and ``censored=True`` — "no crossing within horizon at this
+            confidence" is a valid answer.
+        """
+        self._require_continuous("predict_when")
+        if direction not in ('above', 'below'):
+            raise ValueError(f"direction must be 'above' or 'below', got {direction!r}")
+        if mode not in ('expected', 'risk'):
+            raise ValueError(f"mode must be 'expected' or 'risk', got {mode!r}")
+        if not self.use_conformal or self._calib_residuals_ is None:
+            raise RuntimeError(
+                "predict_when requires conformal calibration; construct the "
+                "forecaster with use_conformal=True and refit."
+            )
+
+        horizon = float(self.forecast_horizon)
+        taus = self._dense_offsets()
+        mean_traj = self._trajectory_at(taus, exog_future=exog_future)
+
+        def _finish(eta, earliest, latest, censored=False, low_confidence=False):
+            earliest = float(np.clip(earliest, taus[0], horizon))
+            latest = float(np.clip(latest, taus[0], horizon))
+            eta = float(np.clip(eta, taus[0], horizon))
+            return PredictWhenResult(
+                eta=self._steps_to_time(eta),
+                earliest=self._steps_to_time(earliest),
+                latest=self._steps_to_time(latest),
+                act_by=self._steps_to_time(earliest),
+                censored=censored,
+                low_confidence=low_confidence,
+                mode=mode,
+                threshold=float(threshold),
+                direction=direction,
+            )
+
+        if mode == 'risk':
+            q = self._interp_step_quantiles(taus, alpha)
+            band = mean_traj + q if direction == 'above' else mean_traj - q
+            t_plausible = first_crossing_time(taus, band, threshold, direction)
+            if t_plausible is None:
+                return _finish(horizon, horizon, horizon, censored=True)
+            return _finish(t_plausible, t_plausible, horizon)
+
+        # mode == 'expected'
+        t_cross = first_crossing_time(taus, mean_traj, threshold, direction)
+        if t_cross is None:
+            return _finish(horizon, horizon, horizon, censored=True)
+
+        lo, hi, n_crossings = self._crossing_calibration(threshold, direction, alpha)
+        if n_crossings >= 20:
+            # Asymmetric time-space calibration: t_actual = t_pred - error,
+            # error in [lo, hi] with (1 - alpha) coverage.
+            return _finish(t_cross, t_cross - hi, t_cross - lo)
+
+        # Fewer than 20 calibration crossings: fall back to value-space
+        # banding and flag low confidence.
+        q = self._interp_step_quantiles(taus, alpha)
+        upper = mean_traj + q
+        lower = mean_traj - q
+        optimistic = upper if direction == 'above' else lower
+        pessimistic = lower if direction == 'above' else upper
+        t_early = first_crossing_time(taus, optimistic, threshold, direction)
+        t_late = first_crossing_time(taus, pessimistic, threshold, direction)
+        earliest = t_early if t_early is not None else t_cross
+        latest = t_late if t_late is not None else horizon
+        return _finish(t_cross, earliest, latest, low_confidence=True)
+
+    @property
+    def sensor_importance_(self) -> pd.Series:
+        """Learned health-indicator fusion weights, one per input channel.
+
+        Available after fitting with ``feature_cols``. The magnitude of a
+        weight reflects how much that channel contributes to the fused
+        health indicator the model forecasts from.
+        """
+        if not self._is_fitted or self.model is None:
+            raise RuntimeError("Model must be fitted first")
+        fusion = getattr(self.model, 'input_fusion', None)
+        if fusion is None:
+            raise RuntimeError(
+                "sensor_importance_ requires fitting with feature_cols "
+                "(multivariate input)."
+            )
+        weights = fusion.weight.detach().cpu().numpy().ravel()
+        names = [self.target_col_ or 'target'] + list(self.feature_cols_ or [])
+        return pd.Series(weights, index=names, name='sensor_importance')
+
+    def predict_when_fleet(
+        self,
+        series_by_asset: Dict,
+        threshold: float,
+        direction: str = 'above',
+        alpha: float = 0.05,
+    ) -> pd.DataFrame:
+        """Event-time forecasts for a fleet of assets, as a schedule.
+
+        Applies the fitted model and its crossing-time calibration to the
+        most recent window of each asset's series and returns a maintenance
+        schedule sorted by ``act_by`` (the operational deadline — never
+        schedule by the point estimate ``eta``).
+
+        Parameters
+        ----------
+        series_by_asset : dict
+            Maps asset id to that asset's recent history: a 1D array-like of
+            target values (at least ``history_length`` long), or a DataFrame
+            containing ``target_col`` (and ``feature_cols`` when the model
+            was fitted multivariate). Values must be in the same units the
+            model was fitted on.
+        threshold : float
+            Threshold level in the original data scale.
+        direction : {'above', 'below'}, default='above'
+        alpha : float, default=0.05
+            Miscoverage level — the sensitivity knob (smaller alpha means
+            wider windows and earlier act-by dates).
+
+        Returns
+        -------
+        DataFrame
+            Columns ``[asset_id, eta, earliest, latest, act_by, censored,
+            confidence]`` sorted by ``act_by`` (censored assets last).
+            Times are float step offsets from the end of each asset's
+            series. Use ``.to_csv()`` / ``.to_dict()`` for CMMS ingestion.
+        """
+        self._require_continuous("predict_when_fleet")
+        if not self.use_conformal or self._calib_residuals_ is None:
+            raise RuntimeError(
+                "predict_when_fleet requires conformal calibration; construct "
+                "the forecaster with use_conformal=True and refit."
+            )
+        if self.has_exog_:
+            raise ValueError(
+                "predict_when_fleet does not support exogenous-variable models."
+            )
+
+        ids = []
+        windows = []
+        for asset_id, series in series_by_asset.items():
+            if isinstance(series, pd.DataFrame):
+                channels = [self.target_col_] + list(self.feature_cols_ or [])
+                missing = [c for c in channels if c not in series.columns]
+                if missing:
+                    raise ValueError(f"Asset {asset_id!r} is missing columns {missing}")
+                matrix = series[channels].to_numpy(dtype=float).T
+            else:
+                if self.feature_cols_:
+                    raise ValueError(
+                        "Model was fitted with feature_cols; each asset must "
+                        "provide a DataFrame with those columns."
+                    )
+                matrix = np.asarray(series, dtype=float).reshape(1, -1)
+            if matrix.shape[1] < self.history_length:
+                raise ValueError(
+                    f"Asset {asset_id!r} has {matrix.shape[1]} points; "
+                    f"history_length={self.history_length} required."
+                )
+            window = matrix[:, -self.history_length:]
+            if self.feature_cols_:
+                assert self.feature_means_ is not None and self.feature_stds_ is not None
+                norm = (window - self.feature_means_[:, None]) / self.feature_stds_[:, None]
+            else:
+                norm = (window - self.scaler_mean_) / self.scaler_std_
+            ids.append(asset_id)
+            windows.append(norm)
+
+        X = torch.tensor(np.stack(windows), dtype=torch.float32)
+        t_pred = self._batch_crossing_times(X, None, threshold, direction)
+        lo, hi, n_calib = self._crossing_calibration(threshold, direction, alpha)
+        low_confidence = n_calib < 20
+
+        horizon = float(self.forecast_horizon)
+        rows = []
+        for asset_id, eta in zip(ids, t_pred):
+            censored = bool(np.isnan(eta))
+            if censored:
+                eta_v = horizon
+                earliest = horizon
+                latest = horizon
+            else:
+                eta_v = float(eta)
+                if low_confidence:
+                    earliest, latest = eta_v, horizon
+                else:
+                    earliest = float(np.clip(eta_v - hi, 0.0, horizon))
+                    latest = float(np.clip(eta_v - lo, 0.0, horizon))
+            rows.append({
+                'asset_id': asset_id,
+                'eta': eta_v,
+                'earliest': earliest,
+                'latest': latest,
+                'act_by': earliest,
+                'censored': censored,
+                'confidence': 1.0 - alpha if not low_confidence else float('nan'),
+            })
+        fleet = pd.DataFrame(rows)
+        return fleet.sort_values(
+            ['censored', 'act_by'], ascending=[True, True]
+        ).reset_index(drop=True)
 
     def plot_forecast(
         self,
@@ -1047,7 +1694,7 @@ class APDTFlowForecaster:
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             if self.verbose:
-                print(f"Plot saved to {save_path}")
+                logger.info(f"Plot saved to {save_path}")
 
         plt.show()
 
@@ -1348,7 +1995,7 @@ class APDTFlowForecaster:
                     predictions = temp_model.predict(steps=forecast_horizon)
                 except Exception as e:
                     if self.verbose:
-                        print(f"Skipping fold {fold} due to error: {e}")
+                        logger.info(f"Skipping fold {fold} due to error: {e}")
                     continue
             else:
                 # Use pre-trained model
@@ -1367,7 +2014,7 @@ class APDTFlowForecaster:
                     predictions = self.predict(steps=forecast_horizon)
                 except Exception as e:
                     if self.verbose:
-                        print(f"Skipping fold {fold} due to error: {e}")
+                        logger.info(f"Skipping fold {fold} due to error: {e}")
                     # Restore original
                     self.last_sequence_ = original_last_seq
                     continue
@@ -1428,21 +2075,21 @@ class APDTFlowForecaster:
                         metric_results[metric] = np.mean(numerator / denominator) * 100
                 except Exception as e:
                     if self.verbose:
-                        print(f"Could not compute {metric}: {e}")
+                        logger.info(f"Could not compute {metric}: {e}")
 
             # Print summary
             if self.verbose:
-                print("\n" + "="*60)
-                print("Historical Forecasts Summary")
-                print("="*60)
-                print(f"Total forecasts: {fold}")
-                print(f"Total predictions: {len(results_df)}")
-                print(f"Forecast horizon: {forecast_horizon}")
-                print(f"Stride: {stride}")
-                print("\nMetrics:")
+                logger.info("\n" + "="*60)
+                logger.info("Historical Forecasts Summary")
+                logger.info("="*60)
+                logger.info(f"Total forecasts: {fold}")
+                logger.info(f"Total predictions: {len(results_df)}")
+                logger.info(f"Forecast horizon: {forecast_horizon}")
+                logger.info(f"Stride: {stride}")
+                logger.info("\nMetrics:")
                 for metric, value in metric_results.items():
-                    print(f"  {metric}: {value:.4f}")
-                print("="*60 + "\n")
+                    logger.info(f"  {metric}: {value:.4f}")
+                logger.info("="*60 + "\n")
 
         # Reorder columns for better readability
         column_order = []
@@ -1452,6 +2099,162 @@ class APDTFlowForecaster:
         results_df = results_df[column_order]
 
         return results_df
+
+    _PARAM_NAMES = (
+        'model_type', 'num_scales', 'hidden_dim', 'filter_size',
+        'forecast_horizon', 'history_length', 'learning_rate', 'batch_size',
+        'num_epochs', 'use_embedding', 'verbose', 'loss_type', 'ode_method',
+        'decoder_type', 'exog_fusion_type', 'use_conformal',
+        'conformal_method', 'calibration_split', 'early_stopping', 'patience',
+        'validation_split', 'categorical_encoding',
+    )
+
+    def get_params(self, deep: bool = True) -> Dict:
+        """Constructor parameters, scikit-learn style."""
+        return {name: getattr(self, name) for name in self._PARAM_NAMES}
+
+    def set_params(self, **params):
+        """Set constructor parameters, scikit-learn style.
+
+        Returns self. Changing parameters does not refit the model.
+        """
+        for name, value in params.items():
+            if name not in self._PARAM_NAMES:
+                raise ValueError(
+                    f"Invalid parameter {name!r}. Valid parameters: "
+                    f"{sorted(self._PARAM_NAMES)}"
+                )
+            setattr(self, name, value)
+        return self
+
+    def score_recent(
+        self,
+        data: Union[pd.DataFrame, np.ndarray],
+        target_col: Optional[str] = None,
+        alpha: float = 0.05,
+    ) -> Dict[str, float]:
+        """Drift check: rolling accuracy and coverage on recent data.
+
+        Slides the fitted model over ``data`` (most recent observations,
+        in the units the model was fitted on) and compares rolling MAE and
+        conformal coverage against the calibration baseline. Coverage that
+        decays below ``1 - alpha`` signals the model needs recalibration —
+        refit (or refit with use_conformal=True) on data that includes the
+        recent regime.
+
+        Returns
+        -------
+        dict
+            ``mae``, ``rmse``, ``n_windows``, ``baseline_mae`` (calibration
+            split), ``mae_ratio`` (mae / baseline_mae), and — when fitted
+            with ``use_conformal=True`` — ``coverage`` vs
+            ``expected_coverage``.
+        """
+        if not self._is_fitted or self.model is None:
+            raise RuntimeError("Model must be fitted first")
+        if self.model_type != 'apdtflow':
+            raise RuntimeError("score_recent supports model_type='apdtflow' only")
+        if self.has_exog_:
+            raise ValueError("score_recent does not support exogenous-variable models")
+
+        if isinstance(data, pd.DataFrame):
+            target = target_col or self.target_col_
+            if self.feature_cols_:
+                assert self.feature_means_ is not None and self.feature_stds_ is not None
+                channels = [target] + list(self.feature_cols_)
+                matrix = data[channels].to_numpy(dtype=float).T
+                norm = (matrix - self.feature_means_[:, None]) / self.feature_stds_[:, None]
+            else:
+                series = data[target].to_numpy(dtype=float)
+                norm = ((series - self.scaler_mean_) / self.scaler_std_).reshape(1, -1)
+        else:
+            if self.feature_cols_:
+                raise ValueError("Multivariate models require DataFrame input")
+            series = np.asarray(data, dtype=float).flatten()
+            assert self.scaler_mean_ is not None and self.scaler_std_ is not None
+            norm = ((series - self.scaler_mean_) / self.scaler_std_).reshape(1, -1)
+
+        total = self.history_length + self.forecast_horizon
+        n_windows = norm.shape[1] - total + 1
+        if n_windows <= 0:
+            raise ValueError(
+                f"Need at least {total} recent points, got {norm.shape[1]}"
+            )
+        X = np.stack([norm[:, i:i + self.history_length] for i in range(n_windows)])
+        targets = np.stack([
+            norm[0, i + self.history_length:i + total] for i in range(n_windows)
+        ]) * self.scaler_std_ + self.scaler_mean_
+
+        t_span = torch.linspace(0, 1, steps=self.history_length, device=self.device)
+        self.model.eval()
+        preds_parts = []
+        with torch.no_grad():
+            X_t = torch.tensor(X, dtype=torch.float32)
+            for start in range(0, len(X_t), 256):
+                xb = X_t[start:start + 256].to(self.device)
+                pb, _ = self.model(xb, t_span)
+                preds_parts.append(pb.squeeze(-1).cpu().numpy())
+        preds = np.concatenate(preds_parts) * self.scaler_std_ + self.scaler_mean_
+
+        residuals = np.abs(preds - targets)
+        result: Dict[str, float] = {
+            'mae': float(residuals.mean()),
+            'rmse': float(np.sqrt(((preds - targets) ** 2).mean())),
+            'n_windows': float(n_windows),
+        }
+        if self._calib_residuals_ is not None:
+            baseline = float(self._calib_residuals_.mean())
+            result['baseline_mae'] = baseline
+            result['mae_ratio'] = float(residuals.mean() / baseline) if baseline else float('nan')
+            q = per_step_quantiles(self._calib_residuals_, alpha)
+            result['coverage'] = float((residuals <= q[None, :]).mean())
+            result['expected_coverage'] = 1.0 - alpha
+        return result
+
+    def export_torchscript(self, filepath: str, example_batch_size: int = 1):
+        """Export the fitted model's grid forecast as TorchScript (traced).
+
+        The exported module maps a normalized input window of shape
+        ``(batch, channels, history_length)`` to normalized grid forecasts
+        of shape ``(batch, forecast_horizon, 1)``. Tracing fixes the input
+        window length, the integer forecast grid, AND the batch size
+        (``example_batch_size``, default 1 — the typical serving pattern of
+        one window per call). ``predict_at`` / ``predict_when`` and
+        conformal calibration are not part of the export (serve those
+        through the Python API — see ``examples/serve_api.py``). ONNX
+        export of the ODE integration graph is not currently supported.
+        """
+        if not self._is_fitted or self.model is None:
+            raise RuntimeError("Model must be fitted first")
+        if self.model_type != 'apdtflow':
+            raise RuntimeError("export_torchscript supports model_type='apdtflow' only")
+
+        model = self.model
+        history_length = self.history_length
+        device = self.device
+
+        class _GridForecast(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.model = model
+                self.register_buffer(
+                    't_span', torch.linspace(0, 1, steps=history_length)
+                )
+
+            def forward(self, x):
+                preds, _ = self.model(x, self.t_span)
+                return preds
+
+        wrapper = _GridForecast().to(device).eval()
+        n_channels = 1 + len(self.feature_cols_ or [])
+        example = torch.randn(
+            example_batch_size, n_channels, history_length, device=device
+        )
+        with torch.no_grad():
+            traced = torch.jit.trace(wrapper, example)
+        traced.save(filepath)
+        if self.verbose:
+            logger.info("TorchScript model exported to %s", filepath)
 
     def save(self, filepath: str):
         """
@@ -1485,8 +2288,13 @@ class APDTFlowForecaster:
             if self.conformal_method == 'adaptive' and hasattr(self.conformal_predictor, 'adaptive_quantile'):
                 conformal_state['adaptive_quantile'] = self.conformal_predictor.adaptive_quantile
 
+        from apdtflow import __version__ as apdtflow_version
+
         # Prepare state dict
         state = {
+            # Library version that produced this checkpoint
+            'apdtflow_version': apdtflow_version,
+
             # Model parameters
             'model_type': self.model_type,
             'forecast_horizon': self.forecast_horizon,
@@ -1498,6 +2306,9 @@ class APDTFlowForecaster:
             'batch_size': self.batch_size,
             'num_epochs': self.num_epochs,
             'use_embedding': self.use_embedding,
+            'loss_type': self.loss_type,
+            'ode_method': self.ode_method,
+            'decoder_type': self.decoder_type,
             'exog_fusion_type': self.exog_fusion_type,
             'use_conformal': self.use_conformal,
             'conformal_method': self.conformal_method,
@@ -1527,13 +2338,30 @@ class APDTFlowForecaster:
 
             # Conformal predictor state
             'conformal_state': conformal_state,
+
+            # Multivariate input state (v0.4.0)
+            'feature_cols': self.feature_cols_,
+            'feature_means': self.feature_means_,
+            'feature_stds': self.feature_stds_,
+
+            # Continuous-time state (v0.4.0): date base and the per-window
+            # calibration data behind predict_at intervals and predict_when
+            # time windows (including already-computed threshold quantiles).
+            'last_date': self.last_date_,
+            'freq_delta': self.freq_delta_,
+            'calib_X': self._calib_X_.numpy() if self._calib_X_ is not None else None,
+            'calib_exog': self._calib_exog_.numpy() if self._calib_exog_ is not None else None,
+            'calib_targets_grid': self._calib_targets_grid_,
+            'calib_residuals': self._calib_residuals_,
+            'calib_anchor': self._calib_anchor_,
+            'when_cache': self._when_cache_,
         }
 
         with open(filepath, 'wb') as f:
             pickle.dump(state, f)
 
         if self.verbose:
-            print(f"Model saved to {filepath}")
+            logger.info(f"Model saved to {filepath}")
 
     @classmethod
     def load(cls, filepath: str, device: Optional[str] = None):
@@ -1558,9 +2386,28 @@ class APDTFlowForecaster:
         >>> predictions = model.predict()
         """
         import pickle
+        import warnings
 
         with open(filepath, 'rb') as f:
             state = pickle.load(f)
+
+        saved_version = state.get('apdtflow_version')
+        if saved_version is None:
+            raise ValueError(
+                "This checkpoint was saved by apdtflow <= 0.3.x. Models from those "
+                "versions contained a defect that made predictions independent of "
+                "the input data and cannot be repaired — retrain with apdtflow >= "
+                "0.4.0. See CHANGELOG.md (v0.4.0) at "
+                "https://github.com/yotambraun/APDTFlow/blob/main/CHANGELOG.md"
+            )
+        from apdtflow import __version__ as current_version
+        if saved_version.split('.')[:2] != current_version.split('.')[:2]:
+            warnings.warn(
+                f"Checkpoint was saved by apdtflow {saved_version} but you are "
+                f"running {current_version}; results may differ across minor "
+                f"versions.",
+                UserWarning,
+            )
 
         # Create new instance with saved parameters
         model = cls(
@@ -1575,6 +2422,9 @@ class APDTFlowForecaster:
             num_epochs=state['num_epochs'],
             device=device,
             use_embedding=state['use_embedding'],
+            loss_type=state.get('loss_type', 'mse'),
+            ode_method=state.get('ode_method', 'rk4'),
+            decoder_type=state.get('decoder_type', 'transformer'),
             exog_fusion_type=state['exog_fusion_type'],
             use_conformal=state['use_conformal'],
             conformal_method=state['conformal_method'],
@@ -1638,6 +2488,23 @@ class APDTFlowForecaster:
             model.categorical_cols_ = None
             model.has_categorical_ = False
 
+        # Restore multivariate input state (v0.4.0)
+        model.feature_cols_ = state.get('feature_cols')
+        model.feature_means_ = state.get('feature_means')
+        model.feature_stds_ = state.get('feature_stds')
+
+        # Restore continuous-time state (v0.4.0)
+        model.last_date_ = state.get('last_date')
+        model.freq_delta_ = state.get('freq_delta')
+        calib_X = state.get('calib_X')
+        model._calib_X_ = torch.tensor(calib_X) if calib_X is not None else None
+        calib_exog = state.get('calib_exog')
+        model._calib_exog_ = torch.tensor(calib_exog) if calib_exog is not None else None
+        model._calib_targets_grid_ = state.get('calib_targets_grid')
+        model._calib_residuals_ = state.get('calib_residuals')
+        model._calib_anchor_ = state.get('calib_anchor')
+        model._when_cache_ = state.get('when_cache') or {}
+
         # Initialize and load model
         model.model = model._initialize_model()
         if state['model_state_dict']:
@@ -1657,68 +2524,68 @@ class APDTFlowForecaster:
         >>> model.fit(df, target_col='sales')
         >>> model.summary()
         """
-        print("=" * 70)
-        print(f"APDTFlow Forecaster Summary - {self.model_type.upper()}")
-        print("=" * 70)
+        logger.info("=" * 70)
+        logger.info(f"APDTFlow Forecaster Summary - {self.model_type.upper()}")
+        logger.info("=" * 70)
 
-        print("\nModel Configuration:")
-        print(f"  Model Type:          {self.model_type}")
-        print(f"  Forecast Horizon:    {self.forecast_horizon} steps")
-        print(f"  History Length:      {self.history_length} steps")
-        print(f"  Hidden Dimension:    {self.hidden_dim}")
-        print(f"  Number of Scales:    {self.num_scales}")
-        print(f"  Filter Size:         {self.filter_size}")
-        print(f"  Use Embedding:       {self.use_embedding}")
+        logger.info("\nModel Configuration:")
+        logger.info(f"  Model Type:          {self.model_type}")
+        logger.info(f"  Forecast Horizon:    {self.forecast_horizon} steps")
+        logger.info(f"  History Length:      {self.history_length} steps")
+        logger.info(f"  Hidden Dimension:    {self.hidden_dim}")
+        logger.info(f"  Number of Scales:    {self.num_scales}")
+        logger.info(f"  Filter Size:         {self.filter_size}")
+        logger.info(f"  Use Embedding:       {self.use_embedding}")
 
         if self.has_exog_:
-            print("\nExogenous Variables:")
-            print(f"  Number of Features:  {self.num_exog_features_}")
-            print(f"  Fusion Type:         {self.exog_fusion_type}")
-            print(f"  Features:            {self.exog_cols_}")
+            logger.info("\nExogenous Variables:")
+            logger.info(f"  Number of Features:  {self.num_exog_features_}")
+            logger.info(f"  Fusion Type:         {self.exog_fusion_type}")
+            logger.info(f"  Features:            {self.exog_cols_}")
             if self.future_exog_cols_:
-                print(f"  Future-Known:        {self.future_exog_cols_}")
+                logger.info(f"  Future-Known:        {self.future_exog_cols_}")
 
         if self.use_conformal:
-            print("\nConformal Prediction:")
-            print(f"  Method:              {self.conformal_method}")
-            print(f"  Calibration Split:   {self.calibration_split}")
+            logger.info("\nConformal Prediction:")
+            logger.info(f"  Method:              {self.conformal_method}")
+            logger.info(f"  Calibration Split:   {self.calibration_split}")
 
-        print("\nTraining Configuration:")
-        print(f"  Learning Rate:       {self.learning_rate}")
-        print(f"  Batch Size:          {self.batch_size}")
-        print(f"  Epochs:              {self.num_epochs}")
-        print(f"  Device:              {self.device}")
+        logger.info("\nTraining Configuration:")
+        logger.info(f"  Learning Rate:       {self.learning_rate}")
+        logger.info(f"  Batch Size:          {self.batch_size}")
+        logger.info(f"  Epochs:              {self.num_epochs}")
+        logger.info(f"  Device:              {self.device}")
 
         if self.model:
             # Count parameters
             total_params = sum(p.numel() for p in self.model.parameters())
             trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
 
-            print("\nModel Parameters:")
-            print(f"  Total Parameters:    {total_params:,}")
-            print(f"  Trainable Parameters: {trainable_params:,}")
-            print(f"  Non-trainable:       {total_params - trainable_params:,}")
+            logger.info("\nModel Parameters:")
+            logger.info(f"  Total Parameters:    {total_params:,}")
+            logger.info(f"  Trainable Parameters: {trainable_params:,}")
+            logger.info(f"  Non-trainable:       {total_params - trainable_params:,}")
 
             # Estimate model size
             param_size_mb = total_params * 4 / (1024 ** 2)  # Assuming float32
-            print(f"  Model Size:          ~{param_size_mb:.2f} MB")
+            logger.info(f"  Model Size:          ~{param_size_mb:.2f} MB")
 
-        print("\nStatus:")
-        print(f"  Fitted:              {self._is_fitted}")
+        logger.info("\nStatus:")
+        logger.info(f"  Fitted:              {self._is_fitted}")
         if self._is_fitted:
-            print(f"  Target Column:       {self.target_col_}")
+            logger.info(f"  Target Column:       {self.target_col_}")
             if self.scaler_mean_ is not None:
-                print(f"  Data Mean:           {self.scaler_mean_:.4f}")
-                print(f"  Data Std:            {self.scaler_std_:.4f}")
+                logger.info(f"  Data Mean:           {self.scaler_mean_:.4f}")
+                logger.info(f"  Data Std:            {self.scaler_std_:.4f}")
 
         # Residual diagnostics
         if self.residuals_ is not None:
-            print("\nResidual Diagnostics:")
-            print(f"  Mean Residual:       {np.mean(self.residuals_):.4f}")
-            print(f"  Std Residual:        {np.std(self.residuals_):.4f}")
-            print(f"  MAE:                 {np.mean(np.abs(self.residuals_)):.4f}")
+            logger.info("\nResidual Diagnostics:")
+            logger.info(f"  Mean Residual:       {np.mean(self.residuals_):.4f}")
+            logger.info(f"  Std Residual:        {np.std(self.residuals_):.4f}")
+            logger.info(f"  MAE:                 {np.mean(np.abs(self.residuals_)):.4f}")
 
-        print("=" * 70)
+        logger.info("=" * 70)
 
     def compute_residuals(
         self,
@@ -2021,7 +2888,7 @@ class APDTFlowForecaster:
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             if self.verbose:
-                print(f"Residual plot saved to {save_path}")
+                logger.info(f"Residual plot saved to {save_path}")
 
         plt.show()
 
@@ -2110,7 +2977,7 @@ class APDTFlowForecaster:
                 diagnostics['shapiro_stat'] = None
                 diagnostics['shapiro_pvalue'] = None
                 if self.verbose:
-                    print(f"Shapiro-Wilk test failed: {e}")
+                    logger.info(f"Shapiro-Wilk test failed: {e}")
         else:
             # Use Kolmogorov-Smirnov test for larger samples
             try:
@@ -2162,39 +3029,39 @@ class APDTFlowForecaster:
 
         # Print summary if verbose
         if self.verbose:
-            print("\n" + "=" * 70)
-            print("RESIDUAL ANALYSIS")
-            print("=" * 70)
-            print(f"\nSample Size: {diagnostics['n_samples']}")
-            print("\nCentral Tendency:")
-            print(f"  Mean Residual:       {diagnostics['mean']:>10.4f}  (should be ≈0)")
-            print(f"  Std Residual:        {diagnostics['std']:>10.4f}")
-            print(f"  MAE:                 {diagnostics['mae']:>10.4f}")
-            print(f"  RMSE:                {diagnostics['rmse']:>10.4f}")
+            logger.info("\n" + "=" * 70)
+            logger.info("RESIDUAL ANALYSIS")
+            logger.info("=" * 70)
+            logger.info(f"\nSample Size: {diagnostics['n_samples']}")
+            logger.info("\nCentral Tendency:")
+            logger.info(f"  Mean Residual:       {diagnostics['mean']:>10.4f}  (should be ≈0)")
+            logger.info(f"  Std Residual:        {diagnostics['std']:>10.4f}")
+            logger.info(f"  MAE:                 {diagnostics['mae']:>10.4f}")
+            logger.info(f"  RMSE:                {diagnostics['rmse']:>10.4f}")
 
-            print("\nDistribution Shape:")
-            print(f"  Skewness:            {diagnostics['skewness']:>10.4f}  (0 = symmetric)")
-            print(f"  Kurtosis:            {diagnostics['kurtosis']:>10.4f}  (0 = normal)")
+            logger.info("\nDistribution Shape:")
+            logger.info(f"  Skewness:            {diagnostics['skewness']:>10.4f}  (0 = symmetric)")
+            logger.info(f"  Kurtosis:            {diagnostics['kurtosis']:>10.4f}  (0 = normal)")
 
-            print("\nNormality Test:")
+            logger.info("\nNormality Test:")
             if 'shapiro_pvalue' in diagnostics and diagnostics['shapiro_pvalue'] is not None:
-                print(f"  Shapiro-Wilk p-val:  {diagnostics['shapiro_pvalue']:>10.4f}  "
-                      f"({'✓ Normal' if diagnostics['shapiro_pvalue'] > 0.05 else '✗ Non-normal'})")
+                logger.info(f"  Shapiro-Wilk p-val:  {diagnostics['shapiro_pvalue']:>10.4f}  "
+                            f"({'Normal' if diagnostics['shapiro_pvalue'] > 0.05 else 'Non-normal'})")
             elif 'ks_pvalue' in diagnostics and diagnostics['ks_pvalue'] is not None:
-                print(f"  K-S p-val:           {diagnostics['ks_pvalue']:>10.4f}  "
-                      f"({'✓ Normal' if diagnostics['ks_pvalue'] > 0.05 else '✗ Non-normal'})")
+                logger.info(f"  K-S p-val:           {diagnostics['ks_pvalue']:>10.4f}  "
+                            f"({'Normal' if diagnostics['ks_pvalue'] > 0.05 else 'Non-normal'})")
 
-            print("\nAutocorrelation Test:")
+            logger.info("\nAutocorrelation Test:")
             if diagnostics['ljung_box_pvalue'] is not None:
-                print(f"  Ljung-Box p-val:     {diagnostics['ljung_box_pvalue']:>10.4f}  "
-                      f"({'✓ No autocorr' if diagnostics['ljung_box_pvalue'] > 0.05 else '✗ Autocorrelated'})")
+                logger.info(f"  Ljung-Box p-val:     {diagnostics['ljung_box_pvalue']:>10.4f}  "
+                            f"({'No autocorr' if diagnostics['ljung_box_pvalue'] > 0.05 else 'Autocorrelated'})")
 
-            print("\n" + "=" * 70)
-            print("\nInterpretation:")
-            print("  • Mean should be close to 0 (unbiased predictions)")
-            print("  • Skewness/Kurtosis should be close to 0 (normally distributed)")
-            print("  • Normality test p-value > 0.05 indicates normal residuals")
-            print("  • Ljung-Box p-value > 0.05 indicates no autocorrelation (good)")
-            print("=" * 70 + "\n")
+            logger.info("\n" + "=" * 70)
+            logger.info("\nInterpretation:")
+            logger.info("  • Mean should be close to 0 (unbiased predictions)")
+            logger.info("  • Skewness/Kurtosis should be close to 0 (normally distributed)")
+            logger.info("  • Normality test p-value > 0.05 indicates normal residuals")
+            logger.info("  • Ljung-Box p-value > 0.05 indicates no autocorrelation (good)")
+            logger.info("=" * 70 + "\n")
 
         return diagnostics

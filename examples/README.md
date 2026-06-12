@@ -1,169 +1,139 @@
 # APDTFlow Examples
 
-This directory contains ready-to-run examples demonstrating APDTFlow's capabilities.
+Ready-to-run scripts demonstrating APDTFlow. All scripts run from the **repo root**:
 
-## 🚀 Quick Start Examples
-
-### 1. **[quickstart_easy_api.py](quickstart_easy_api.py)** - NEW!
-The simplest way to get started with time series forecasting using APDTFlow's easy high-level API.
-
-**What you'll learn:**
-- How to use the simple `fit()`/`predict()` interface
-- Making forecasts with uncertainty estimates
-- Visualizing forecasts with built-in plotting
-- Trying different model architectures (ODE, Transformer, TCN, Ensemble)
-
-**Run it:**
 ```bash
-cd examples
-python quickstart_easy_api.py
+python examples/<name>.py
 ```
 
-**Perfect for:** Beginners and anyone who wants fast, easy forecasting
+Plots are saved into this directory. Scripts that train a model seed all RNGs with
+`apdtflow.set_seed(0)` so runs are reproducible.
 
 ---
 
-## 📓 Jupyter Notebook Examples
+## Start here: the continuous-time API (v0.4.0)
 
-Located in `experiments/notebooks/`:
+### 1. [predict_at_demo.py](predict_at_demo.py) — forecast at ANY moment in time
 
-### 2. **[tutorial.ipynb](../experiments/notebooks/tutorial.ipynb)**
-Comprehensive tutorial covering all major features of APDTFlow.
+Most forecasting tools answer "what will the value be at step k?". APDTFlow's
+continuous-time decoder answers "what will the value be at 14:37 next Tuesday?" —
+fractional steps, arbitrary timestamps, and times beyond the trained horizon — from
+one trained model, with conformal intervals. Uses the real daily-minimum-temperatures
+dataset.
 
-**What you'll learn:**
-- Setting up datasets
-- Training all model types (APDTFlow, Transformer, TCN, Ensemble)
-- Evaluating model performance
-- Custom training loops
+```bash
+python examples/predict_at_demo.py
+```
 
-**Perfect for:** Understanding the full API and advanced features
+### 2. [predict_when_demo.py](predict_when_demo.py) — forecast WHEN a threshold is crossed
 
-### 3. **[embedding_integ.ipynb](../experiments/notebooks/embedding_integ.ipynb)**
-Demonstrates the learnable time series embedding feature.
+"When will solar activity rise above 80?" — `predict_when` answers with a calibrated
+time window, not just a point guess, and returns an `act_by` date (the window's early
+edge) to schedule against. Also shows `mode='risk'` ("from when is the crossing
+plausible?") and censoring. Uses the monthly-sunspots dataset.
 
-**What you'll learn:**
-- How to enable time series embeddings
-- Benefits of learned temporal representations
-- Comparing performance with/without embeddings
+```bash
+python examples/predict_when_demo.py
+```
 
-**Perfect for:** Advanced users seeking state-of-the-art performance
+Note: this script demonstrates the API on a cyclic series. The domains where
+`predict_when` has audited, baseline-beating skill are degradation/depletion problems
+— see [docs/METHODOLOGY.md](../docs/METHODOLOGY.md) §5–7 and the battery playground
+below.
 
-### 4. **[cross_val.ipynb](../experiments/notebooks/cross_val.ipynb) & [Cross_Validation.ipynb](../experiments/notebooks/Cross_Validation.ipynb)**
-Time series cross-validation strategies.
+### 3. [battery_rul_playground.py](battery_rul_playground.py) — battery remaining useful life
 
-**What you'll learn:**
-- Rolling window validation
-- Expanding window validation
-- Blocked cross-validation
-- Proper time series evaluation
+Pick a forecast origin anywhere along a real NASA battery's life and see the capacity
+forecast, the predicted end-of-life window, and how the RUL estimate converges as the
+origin advances. Every number comes from models trained on the *other* two cells
+(leave-one-battery-out) — nothing is simulated.
 
-**Perfect for:** Rigorous model evaluation
+```bash
+python examples/battery_rul_playground.py --origin 90
+python examples/battery_rul_playground.py --cell B0006 --origin 120
+```
 
-### 5. **[mega_experiment.ipynb](../experiments/notebooks/mega_experiment.ipynb)**
-Large-scale experiment comparing all models across multiple forecast horizons.
-
-**What you'll learn:**
-- Systematic model comparison
-- Performance across different forecast horizons
-- Statistical analysis of results
-
-**Perfect for:** Research and benchmarking
-
-### 6. **[preprocessing.ipynb](../experiments/notebooks/preprocessing.ipynb)**
-Data preprocessing and augmentation techniques.
-
-**What you'll learn:**
-- Handling missing values
-- Data normalization
-- Time series augmentation
-- Feature engineering
-
-**Perfect for:** Data preparation best practices
-
-### 7. **[evaluation.ipynb](../experiments/notebooks/evaluation.ipynb)**
-Model evaluation and metrics.
-
-**What you'll learn:**
-- Different evaluation metrics (MSE, MAE, RMSE, MAPE)
-- Custom metric creation
-- Comparing model performance
-
-**Perfect for:** Understanding model quality
-
-### 8. **[exogenous_variables.ipynb](../experiments/notebooks/exogenous_variables.ipynb)** - NEW in v0.2.0! 🚀
-Using external features to boost accuracy by 30-50%.
-
-**What you'll learn:**
-- How to use exogenous variables (temperature, holidays, promotions)
-- Past-observed vs future-known covariates
-- Comparing fusion strategies (concat, gated, attention)
-- Real-world examples with visualizations
-
-**Perfect for:** Maximizing forecast accuracy with external data
-
-### 9. **[conformal_prediction.ipynb](../experiments/notebooks/conformal_prediction.ipynb)** - NEW in v0.2.0! 📊
-Rigorous uncertainty quantification with coverage guarantees.
-
-**What you'll learn:**
-- Split conformal prediction (simple & reliable)
-- Adaptive conformal prediction (for non-stationary data)
-- Guaranteed coverage intervals (e.g., 95%)
-- When and why to use conformal prediction
-
-**Perfect for:** Decision-making, risk management, safety-critical applications
+Notebook twin with an interactive origin slider:
+[battery_rul_playground.ipynb](battery_rul_playground.ipynb)
+(also runs on Colab — data is fetched from GitHub when not local).
 
 ---
 
-## 🎯 Choose Your Path
+## Core forecasting API
 
-### I want to start forecasting ASAP
-→ Start with **quickstart_easy_api.py**
+### 4. [quickstart_easy_api.py](quickstart_easy_api.py)
 
-### I want to understand everything
-→ Work through **tutorial.ipynb**
+The simplest way to start: `fit()`/`predict()` on the Electric Production dataset,
+uncertainty estimates, and the built-in `plot_forecast()`.
 
-### I want maximum accuracy
-→ Check out **embedding_integ.ipynb** and **mega_experiment.ipynb**
+### 5. [conformal_prediction_demo.py](conformal_prediction_demo.py)
 
-### I want robust validation
-→ Explore **cross_val.ipynb**
+Calibrated prediction intervals with finite-sample coverage guarantees: split
+conformal (simple, reliable) and adaptive conformal (for non-stationary data), with
+empirical coverage checks.
 
-### I have messy data
-→ Learn from **preprocessing.ipynb**
+### 6. [exogenous_variables_demo.py](exogenous_variables_demo.py)
 
-### I want to use external features (NEW!)
-→ Explore **exogenous_variables.ipynb** 🚀
+External features (temperature, holidays, promotions): past-observed vs future-known
+covariates and the three fusion strategies (`concat`, `gated`, `attention`).
 
-### I need rigorous uncertainty quantification (NEW!)
-→ Check out **conformal_prediction.ipynb** 📊
+### 7. [categorical_features_demo.py](categorical_features_demo.py)
+
+Categorical variables (day-of-week, holidays, categories) with one-hot and embedding
+encodings, including unseen-category handling.
+
+### 8. [backtesting_demo.py](backtesting_demo.py)
+
+`historical_forecasts()` rolling-origin backtesting: fixed-model vs retrain modes,
+stride selection, and MASE/sMAPE evaluation.
+
+### 9. [migrate_from_prophet.py](migrate_from_prophet.py)
+
+Side-by-side Prophet-to-APDTFlow migration: same data, equivalent calls, plus the
+features Prophet does not have (conformal intervals, exogenous fusion,
+continuous-time queries).
+
+### 10. [serve_api.py](serve_api.py)
+
+Serve a fitted, saved model over HTTP with FastAPI:
+
+```bash
+pip install apdtflow[serve]
+uvicorn serve_api:app --port 8000   # run from examples/
+curl localhost:8000/forecast
+curl -X POST localhost:8000/predict_when \
+     -H 'Content-Type: application/json' \
+     -d '{"threshold": 1.4, "direction": "below"}'
+```
 
 ---
 
-## 📊 Example Datasets
+## Notebooks
 
-All examples use datasets from `dataset_examples/`:
-- **Electric_Production.csv** - U.S. electric production monthly data
-- **daily-minimum-temperatures-in-me.csv** - Daily temperature data
-- **monthly-beer-production-in-austr.csv** - Monthly beer production
-- **sales-of-shampoo-over-a-three-ye.csv** - Retail sales data
+- [../Quickstart.ipynb](../Quickstart.ipynb) — the three questions
+  (`predict` / `predict_at` / `predict_when`) in one notebook; Colab-ready.
+- [battery_rul_playground.ipynb](battery_rul_playground.ipynb) — interactive battery
+  RUL exploration; Colab-ready.
 
----
+## Datasets
 
-## 🆘 Need Help?
+Examples use real datasets from [`dataset_examples/`](../dataset_examples):
 
-- 📖 **Documentation**: [docs/index.md](../docs/index.md)
-- 🏗️ **Model Details**: [docs/models.md](../docs/models.md)
-- 📈 **Experiment Results**: [docs/experiment_results.md](../docs/experiment_results.md)
-- 🐛 **Issues**: [GitHub Issues](https://github.com/yotambraun/APDTFlow/issues)
+- `daily-minimum-temperatures-in-me_clean.csv` — daily minimum temperatures (Melbourne)
+- `monthly-sunspots.csv` — monthly sunspot counts since 1749
+- `Electric_Production.csv` — U.S. monthly electric production
+- `nasa_B0005.csv`, `nasa_B0006.csv`, `nasa_B0007.csv` — NASA battery degradation
+  (Saha & Goebel, 2007)
+- `cmapss/` + `get_cmapss.py` — NASA C-MAPSS turbofan data (downloader script)
+- `get_opsd_germany.py` — Open Power System Data downloader
 
----
+The exogenous, categorical, conformal, and backtesting demos generate small synthetic
+datasets inline so their effects are unambiguous.
 
-## 🚀 Coming Soon
+## Help
 
-- Google Colab notebooks (click to run in browser!)
-- Attention visualization examples
-- Hyperparameter tuning with Optuna
-- Pre-trained models and transfer learning
-- MLOps integration (MLflow, Weights & Biases)
-
-**Stay tuned for v0.3.0!**
+- Documentation: [docs/index.md](../docs/index.md)
+- Architecture: [docs/models.md](../docs/models.md)
+- Methodology and evaluation protocol: [docs/METHODOLOGY.md](../docs/METHODOLOGY.md)
+- Measured results: [docs/experiment_results.md](../docs/experiment_results.md)
+- Issues: [GitHub Issues](https://github.com/yotambraun/APDTFlow/issues)

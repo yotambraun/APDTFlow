@@ -1,0 +1,64 @@
+{
+  "demo": "turbofan_multivariate",
+  "dataset": "NASA C-MAPSS FD001 (100 run-to-failure engines)",
+  "config": {
+    "target": "s11",
+    "feature_cols": [
+      "s12",
+      "s4",
+      "s7",
+      "s15"
+    ],
+    "threshold": 47.94,
+    "direction": "above",
+    "history": 30,
+    "horizon": 40,
+    "alpha": 0.1,
+    "epochs": 25,
+    "stride": 3,
+    "train_engines": 60,
+    "audit_engines": 40,
+    "seed": 4
+  },
+  "metrics": {
+    "n_windows": 1990,
+    "n_events": 271,
+    "n_no_crossing": 1719,
+    "mae_full_apdtflow": 10.113076354993336,
+    "mae_full_linear": 8.647538384937178,
+    "mae_full_persistence": 11.464502811123074,
+    "mae_caught": 5.84684230607467,
+    "catch_rate": 0.07011070110701106,
+    "n_false_alarms": 0,
+    "false_alarm_rate": 0.0,
+    "coverage": 0.2631578947368421,
+    "matched_subset_n": 16,
+    "matched_apdtflow_mae": 6.505960435227639,
+    "matched_linear_mae": 11.819787418858992,
+    "n_calibration_crossings": 1158
+  },
+  "univariate_reference": {
+    "n_windows": 1990,
+    "n_events": 271,
+    "n_no_crossing": 1719,
+    "mae_full_apdtflow": 8.334118463489668,
+    "mae_full_linear": 8.647538384937178,
+    "mae_full_persistence": 11.464502811123074,
+    "mae_caught": 8.34130987638647,
+    "catch_rate": 0.2656826568265683,
+    "n_false_alarms": 11,
+    "false_alarm_rate": 0.006399069226294357,
+    "coverage": 0.4027777777777778,
+    "matched_subset_n": 38,
+    "matched_apdtflow_mae": 8.486776159475092,
+    "matched_linear_mae": 9.681344620162834,
+    "n_calibration_crossings": 1258
+  },
+  "sensor_importance": {
+    "s11": -0.3770557940006256,
+    "s12": 0.14445379376411438,
+    "s4": -0.1708630472421646,
+    "s7": 0.08015237748622894,
+    "s15": -0.18777665495872498
+  }
+}

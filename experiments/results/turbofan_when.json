@@ -1,0 +1,34 @@
+{
+  "demo": "turbofan_when",
+  "dataset": "NASA C-MAPSS FD001 (100 run-to-failure engines)",
+  "config": {
+    "sensor": "s11",
+    "threshold": 47.94,
+    "direction": "above",
+    "history": 30,
+    "horizon": 40,
+    "alpha": 0.1,
+    "epochs": 25,
+    "stride": 3,
+    "train_engines": 60,
+    "audit_engines": 40,
+    "seed": 4
+  },
+  "metrics": {
+    "n_windows": 1990,
+    "n_events": 271,
+    "n_no_crossing": 1719,
+    "mae_full_apdtflow": 8.334118463489668,
+    "mae_full_linear": 8.647538384937178,
+    "mae_full_persistence": 11.464502811123074,
+    "mae_caught": 8.34130987638647,
+    "catch_rate": 0.2656826568265683,
+    "n_false_alarms": 11,
+    "false_alarm_rate": 0.006399069226294357,
+    "coverage": 0.4027777777777778,
+    "matched_subset_n": 38,
+    "matched_apdtflow_mae": 8.486776159475092,
+    "matched_linear_mae": 9.681344620162834,
+    "n_calibration_crossings": 1258
+  }
+}

@@ -1,8 +1,12 @@
 import torch
 import torch.nn as nn
-from torch.nn.utils import weight_norm
+
+from apdtflow.logger_util import get_logger
+from torch.nn.utils.parametrizations import weight_norm
 from .base_forecaster import BaseForecaster
 from apdtflow.evaluation.regression_evaluator import RegressionEvaluator
+
+logger = get_logger("apdtflow.models.tcn_forecaster")
 
 
 class Chomp1d(nn.Module):
@@ -94,15 +98,18 @@ class TCNForecaster(BaseForecaster):
             epoch_loss = 0.0
             for x_batch, y_batch in train_loader:
                 x_batch = x_batch.to(device).squeeze(1)
-                y_batch = y_batch.to(device).squeeze(1)
+                y_batch = y_batch.to(device)
                 optimizer.zero_grad()
                 preds = self(x_batch)
-                loss = criterion(preds, y_batch)
+                # Targets arrive as (B, 1, H) or (B, 1, 1, H); align them
+                # with the (B, H, out) predictions instead of broadcasting.
+                loss = criterion(preds, y_batch.reshape_as(preds))
                 loss.backward()
                 optimizer.step()
                 epoch_loss += loss.item() * x_batch.size(0)
-            print(
-                f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss/len(train_loader.dataset):.4f}"
+            logger.info(
+                "Epoch %d/%d, Loss: %.4f",
+                epoch + 1, num_epochs, epoch_loss / len(train_loader.dataset),
             )
         return
 

@@ -365,6 +365,7 @@ class TestModelWithExogenousDirect:
             hidden_dim=16,
             output_dim=1,
             forecast_horizon=7,
+            history_length=30,
             use_embedding=True,
             num_exog_features=2,
             exog_fusion_type='gated'
@@ -411,6 +412,7 @@ class TestModelWithExogenousDirect:
                 hidden_dim=16,
                 output_dim=1,
                 forecast_horizon=7,
+                history_length=30,
                 num_exog_features=num_exog,
                 exog_fusion_type='gated'
             )

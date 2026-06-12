@@ -1,0 +1,20 @@
+{
+  "meta": {
+    "script": "experiments/prototypes/odernn_gate.py",
+    "status": "research track only \u2014 NOT a release feature (spec Section 11.2; arXiv:2505.00590)",
+    "missing_fraction": 0.5291666666666667,
+    "horizon": 12,
+    "history": 36,
+    "epochs": 40,
+    "seed": 5,
+    "n_test_windows": 192,
+    "generated": "2026-06-11 16:17:42"
+  },
+  "mae_vs_true": {
+    "ODE-RNN encoder": 2.8671025321135684,
+    "APDTFlow + ffill": 2.477710309926383,
+    "linear + ffill": 2.506747925504647,
+    "seasonal-naive + ffill": 2.0314225867381293
+  },
+  "odernn_beats_all_baselines": false
+}

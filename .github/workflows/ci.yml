@@ -50,7 +50,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install .
-          pip install pytest pytest-cov flake8 mypy
+          pip install -r requirements-dev.txt
 
       - name: Run flake8
         run: flake8 apdtflow tests
@@ -58,9 +58,16 @@ jobs:
       - name: Run mypy
         run: mypy apdtflow
 
-      - name: Run tests
+      # Pull requests run the fast suite; pushes to main also run the
+      # slow learning/calibration regression tests (they train models).
+      - name: Run tests (fast)
+        if: github.event_name == 'pull_request'
+        run: pytest -m "not slow" --maxfail=1 --disable-warnings -q --cov=apdtflow --cov-report=term-missing
+
+      - name: Run tests (full, incl. slow)
+        if: github.event_name == 'push'
         run: pytest --maxfail=1 --disable-warnings -q --cov=apdtflow --cov-report=term-missing
-      
+
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:

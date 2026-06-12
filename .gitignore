@@ -11,7 +11,7 @@ checkpoints/
 logs/
 training.log
 *.log
-
+next_version_matriels/
 # Build artifacts
 build/
 dist/
@@ -29,6 +29,7 @@ apdtflow.egg-info/
 
 # Claude Code
 .claude/
+docs/superpowers/
 
 # Testing
 .pytest_cache/
@@ -52,3 +53,9 @@ command_pytest.txt
 Thumbs.db
 .Spotlight-V100
 .Trashes
+# Downloaded benchmark datasets (fetched via dataset_examples/get_*.py)
+dataset_examples/cmapss/
+dataset_examples/opsd_germany_daily.csv
+
+# Type checking
+.mypy_cache/

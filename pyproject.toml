@@ -3,8 +3,8 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "apdtflow"  # This was missing, causing the error
-version = "0.3.0"
+name = "apdtflow"
+version = "0.4.0"
 description = "APDTFlow: A modular forecasting framework for time series data"
 authors = [
     { name = "Yotam Barun", email = "yotambarun93@gmail.com" }
@@ -55,6 +55,12 @@ classifiers=[
         "License :: OSI Approved :: MIT License",
     ]
 
+[project.optional-dependencies]
+mlflow = ["mlflow"]
+wandb = ["wandb"]
+serve = ["fastapi", "uvicorn"]
+dev = ["pytest", "pytest-cov", "flake8", "mypy", "build", "twine"]
+
 [project.urls]
 Homepage = "https://github.com/yotambraun/APDTFlow"
 Documentation = "https://github.com/yotambraun/APDTFlow"
@@ -62,7 +68,13 @@ Source = "https://github.com/yotambraun/APDTFlow"
 
 [tool.pytest.ini_options]
 addopts = "--cov=apdtflow --cov-report=xml"
+markers = [
+    "slow: long-running training tests (run in CI on push to main)",
+]
 
 [project.scripts]
 apdtflow = "apdtflow.cli:main"
+
+[tool.setuptools.package-data]
+apdtflow = ["py.typed", "config/*.yaml"]
 

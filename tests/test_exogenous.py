@@ -225,6 +225,7 @@ class TestAPDTFlowWithExogenous:
             hidden_dim=16,
             output_dim=1,
             forecast_horizon=7,
+            history_length=30,
             use_embedding=True,
             num_exog_features=num_exog,
             exog_fusion_type='gated'
@@ -255,6 +256,7 @@ class TestAPDTFlowWithExogenous:
             hidden_dim=16,
             output_dim=1,
             forecast_horizon=7,
+            history_length=30,
             use_embedding=True,
             num_exog_features=0
         )
@@ -279,6 +281,7 @@ class TestAPDTFlowWithExogenous:
                 hidden_dim=16,
                 output_dim=1,
                 forecast_horizon=7,
+                history_length=30,
                 use_embedding=True,
                 num_exog_features=3,
                 exog_fusion_type=fusion_type
@@ -304,6 +307,7 @@ class TestAPDTFlowWithExogenous:
             hidden_dim=16,
             output_dim=1,
             forecast_horizon=7,
+            history_length=30,
             use_embedding=True,
             num_exog_features=3,
             exog_fusion_type='gated'

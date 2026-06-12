@@ -6,11 +6,15 @@ This example demonstrates the new simple API for time series forecasting.
 No complex setup needed - just fit and predict!
 """
 
+from pathlib import Path
+
 import pandas as pd
 from apdtflow import APDTFlowForecaster
 
-# Load your time series data
-df = pd.read_csv('../dataset_examples/Electric_Production.csv', parse_dates=['DATE'])
+# Load your time series data (path is relative to the repo, so this runs
+# from anywhere: python examples/quickstart_easy_api.py)
+CSV = Path(__file__).resolve().parents[1] / "dataset_examples" / "Electric_Production.csv"
+df = pd.read_csv(CSV, parse_dates=['DATE'])
 
 print("Dataset shape:", df.shape)
 print("First few rows:")

@@ -17,6 +17,10 @@ import numpy as np
 import torch
 from typing import Optional, Tuple, Callable, overload, Literal, Union
 
+from .logger_util import get_logger
+
+logger = get_logger("apdtflow.conformal")
+
 
 class SplitConformalPredictor:
     """
@@ -90,8 +94,8 @@ class SplitConformalPredictor:
 
         self.is_calibrated = True
 
-        print(f"✓ Calibrated with {n} samples")
-        print(f"  Quantile at {1-self.alpha:.1%} level: {self.quantile:.4f}")
+        logger.info("Calibrated with %d samples", n)
+        logger.info("  Quantile at %.1f%% level: %.4f", 100 * (1 - self.alpha), self.quantile)
 
     @overload
     def predict(
@@ -424,3 +428,53 @@ def plot_conformal_intervals(
     plt.show()
 
     return fig, ax
+
+
+def per_step_quantiles(residuals: np.ndarray, alpha: float = 0.05) -> np.ndarray:
+    """Per-horizon-step value-space conformal quantiles.
+
+    Args:
+        residuals: Array of shape ``(n_windows, horizon)`` with absolute
+            residuals ``|y - y_hat|`` on the calibration split.
+        alpha: Miscoverage level (0.05 for 95% intervals).
+
+    Returns:
+        Array of shape ``(horizon,)`` — the per-step ``(1 - alpha)``
+        empirical quantile with the standard finite-sample correction.
+    """
+    residuals = np.asarray(residuals, dtype=float)
+    if residuals.ndim != 2:
+        raise ValueError(f"residuals must be 2D (n, horizon), got {residuals.shape}")
+    n = residuals.shape[0]
+    if n == 0:
+        raise ValueError("residuals is empty")
+    level = min(1.0, np.ceil((n + 1) * (1 - alpha)) / n)
+    return np.quantile(residuals, level, axis=0)
+
+
+def crossing_time_quantile(
+    t_pred_errors: np.ndarray, alpha: float = 0.05
+) -> Tuple[float, float]:
+    """Asymmetric signed-error quantiles for crossing-time calibration.
+
+    Used by ``predict_when``: given signed crossing-time errors
+    ``t_pred - t_actual`` on calibration crossings, returns the
+    ``(alpha/2, 1 - alpha/2)`` empirical quantiles. The calibrated window
+    for a prediction ``t_pred`` is then ``[t_pred - hi, t_pred - lo]``.
+    Asymmetric (signed) calibration absorbs systematic timing bias that a
+    symmetric ``|error|`` quantile cannot.
+
+    Args:
+        t_pred_errors: 1D array of signed errors on calibration crossings.
+        alpha: Miscoverage level.
+
+    Returns:
+        Tuple ``(lo, hi)`` of signed-error quantiles.
+    """
+    errors = np.asarray(t_pred_errors, dtype=float)
+    errors = errors[~np.isnan(errors)]
+    if errors.size == 0:
+        raise ValueError("no calibration crossing errors provided")
+    lo = float(np.quantile(errors, alpha / 2))
+    hi = float(np.quantile(errors, 1 - alpha / 2))
+    return lo, hi

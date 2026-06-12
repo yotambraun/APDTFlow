@@ -34,7 +34,8 @@ One trained model answers three questions:
 
 *One call — `predict_when_fleet()` — turns real NASA jet engines (never seen in
 training) into a maintenance schedule sorted by act-by date, with what actually
-happened marked. <!--PENDING:fd002_actby_caption-->*
+happened marked. In this measured snapshot the calibrated windows covered 81% of
+the actual crossings.*
 
 ## 60-second start
 
@@ -64,9 +65,15 @@ schedule = model.predict_when_fleet(assets,           # whole fleet -> ranked sc
 |---|---|---|---|
 | Battery end-of-life, 3 cells leave-one-battery-out (timing MAE, measured cycles) | **8.3** (2.8 on the typical cell) | 9.7 | 15.4 |
 | Turbofan FD001, 40 unseen engines (timing MAE, cycles; 0.6% false alarms) | **8.3** | 8.7 | 11.5 |
-| Turbofan FD002, unseen engines, 6 operating regimes | <!--PENDING:fd002_row--> | | |
+| Turbofan FD002, 110 unseen engines, 6 operating regimes (timing MAE, cycles; 0.0% false alarms) | 9.2 | **8.1** | 11.3 |
 
-<!--PENDING:coverage_sentence-->
+APDTFlow wins the battery and FD001 audits outright and **loses to linear on
+FD002** — published as measured (it does win FD002's matched subset, 6.8 vs 7.8
+cycles, and posts **zero false alarms across 2,638 no-crossing windows**, the
+property that matters most against alarm fatigue). Time-window coverage measured
+96% / 40% / 54% against a 90% target across the three audits: strong
+within-distribution, stretched by cross-unit transfer — the trust panel below
+shows exactly that.
 
 Reproduce: `python experiments/battery_eol_demo.py`, `experiments/turbofan_when_demo.py`,
 `experiments/fd002_robustness_demo.py`. Full details: [docs/experiment_results.md](docs/experiment_results.md).
@@ -91,10 +98,12 @@ false alarms), but it commits far less often. Published as measured:
 
 ![trust](assets/images/apdtflow_trust_panel.png)
 
-The point estimate runs slightly late on smoothed indicators; the asymmetric
-time-space calibration absorbs it. **Operational rule: schedule by `act_by` (the
-window's earliest edge), never by the point estimate.** The API returns `act_by`
-as a first-class field for exactly this reason.
+The panel reports its own miss: on cross-unit transfer the windows measured
+under their 90% target, and for distant events the point estimate saturates
+toward mid-horizon (the flattening scatter). That is why the **operational rule**
+exists: **schedule by `act_by` (the window's earliest edge), never by the point
+estimate** — the API returns `act_by` as a first-class field for exactly this
+reason, and the per-lead-time error bars tell you how much to trust each horizon.
 
 ## predict_at — forecast at any moment in time
 

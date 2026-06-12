@@ -134,7 +134,33 @@ trade-off are printed by the script and shown in the figure.
 `regime_normalize` statistics from training engines only, multivariate indicator,
 audit on unseen engines.
 
-<!--PENDING:fd002_results_section-->
+Measured 2026-06-12 — 110 unseen engines, 3,028 held-out windows, 389 real
+events, 25 epochs, per-regime normalization statistics from training engines only:
+
+| Metric | APDTFlow (multivariate) | Linear | Persistence |
+|---|---|---|---|
+| Timing MAE, full event set (cycles) | 9.20 | **8.10** | 11.26 |
+| Timing MAE, matched subset (n=46) | **6.81** | 7.81 | — |
+| Timing MAE, caught events (cycles) | 6.55 | — | — |
+| False alarms (2,638 no-crossing windows) | **0.00%** | — | — |
+| Catch rate | 13.4% | — | — |
+| 90%-window coverage | 53.9% | — | — |
+
+Fleet snapshot (one mid-life window per engine): calibrated windows covered 81%
+of actual crossings; the act-by edge preceded the actual crossing for 23% of
+crossing engines.
+
+**Honest reading: linear extrapolation wins this audit on the full event set**,
+and we publish that. APDTFlow's measured advantages on FD002 are the matched
+subset (6.81 vs 7.81 — sharper where both methods commit), zero false alarms, and
+beating persistence by 2.1 cycles. The under-target coverage (54% vs 90%) repeats
+the cross-unit-transfer pattern of the other audits. The shipping rule
+(Section 5) means FD002 is **not** advertised as a win anywhere in this
+repository — it is advertised as exactly what it measured.
+
+![fd002](../assets/images/apdtflow_fd002_robustness.png)
+![fleet](../assets/images/apdtflow_fleet_dashboard.png)
+![trust](../assets/images/apdtflow_trust_panel.png)
 
 ## 4. Negative results (kept reproducible on purpose)
 

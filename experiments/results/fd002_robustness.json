@@ -15,7 +15,7 @@
     "history": 30,
     "horizon": 40,
     "alpha": 0.1,
-    "epochs": 8,
+    "epochs": 25,
     "stride": 5,
     "train_engines": 150,
     "audit_engines": 110,
@@ -26,30 +26,30 @@
     "n_windows": 3028,
     "n_events": 389,
     "n_no_crossing": 2638,
-    "mae_full_apdtflow": 9.013767179952003,
+    "mae_full_apdtflow": 9.197021608024375,
     "mae_full_linear": 8.100300814671094,
     "mae_full_persistence": 11.259166600802198,
-    "mae_caught": 9.906401879300608,
-    "catch_rate": 0.1953727506426735,
+    "mae_caught": 6.552719265133162,
+    "catch_rate": 0.13367609254498714,
     "n_false_alarms": 0,
     "false_alarm_rate": 0.0,
-    "coverage": 0.5,
-    "matched_subset_n": 61,
-    "matched_apdtflow_mae": 10.253517427195254,
-    "matched_linear_mae": 8.057884298690952,
-    "n_calibration_crossings": 4310
+    "coverage": 0.5384615384615384,
+    "matched_subset_n": 46,
+    "matched_apdtflow_mae": 6.814750326933024,
+    "matched_linear_mae": 7.808535646319877,
+    "n_calibration_crossings": 4117
   },
   "fleet_snapshot": {
     "n_engines": 110,
     "n_with_actual_crossing": 107,
-    "act_by_early_enough": 0.6448598130841121,
-    "window_coverage": 0.868421052631579
+    "act_by_early_enough": 0.2336448598130841,
+    "window_coverage": 0.8076923076923077
   },
   "sensor_importance": {
-    "health_indicator": 0.2847430408000946,
-    "s15": 0.15178321301937103,
-    "s4": 0.1670091599225998,
-    "s17": 0.09340432286262512,
-    "s2": 0.10319140553474426
+    "health_indicator": 0.2620287537574768,
+    "s15": 0.1525113433599472,
+    "s4": 0.15666495263576508,
+    "s17": 0.09417086839675903,
+    "s2": 0.10968979448080063
   }
 }

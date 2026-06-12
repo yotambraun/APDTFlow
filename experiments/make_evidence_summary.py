@@ -126,9 +126,15 @@ def main() -> None:
         if uni.get("catch_rate") is not None and multi.get("catch_rate") is not None:
             catch_note = (f"\ncatch rate {pct(uni['catch_rate'])} -> "
                           f"{pct(multi['catch_rate'])}")
+        if (uni.get("mae_full_apdtflow") is not None
+                and multi.get("mae_full_apdtflow") is not None
+                and multi["mae_full_apdtflow"] < uni["mae_full_apdtflow"]):
+            verdict = "multivariate improves full-set timing"
+        else:
+            verdict = "multivariate: sharper when it speaks,\nmore conservative overall"
         method_bars(ax, vals, labels, colors, "timing MAE (cycles)",
-                    "Turbofan FD001 (unseen engines):\nmultivariate halves the "
-                    "timing error" + catch_note, fmt="{:.2f}")
+                    "Turbofan FD001 (unseen engines):\n" + verdict + catch_note,
+                    fmt="{:.2f}")
     else:
         placeholder(ax, "turbofan_when_demo.py")
 

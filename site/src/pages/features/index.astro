@@ -1,0 +1,64 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import { featureSections, featureGroups, url, site, docs } from '../../data/site';
+
+// feature-name chips per section, derived from the groups attached to it
+function namesFor(slug: string): string[] {
+  return featureGroups
+    .filter((g) => g.section === slug)
+    .flatMap((g) => g.items.map((i) => i.name));
+}
+---
+
+<BaseLayout
+  title="Features"
+  description="APDTFlow capabilities and how to use them: continuous-time forecasting, conformal prediction intervals, event timing, exogenous and categorical variables, multivariate fusion, rolling-origin backtesting, drift monitoring, TorchScript and FastAPI serving."
+>
+  <PageHeader
+    eyebrow="Capabilities"
+    title="Features"
+    intro="Everything one trained model does — grouped into four areas, each with what it means, when to reach for it, and the code to use it."
+  />
+
+  <div class="wrap pb-16">
+    <div class="grid gap-6 md:grid-cols-2">
+      {
+        featureSections.map((s, i) => (
+          <a
+            href={url(`features/${s.slug}`)}
+            class="card group flex flex-col p-7 transition-all hover:border-cyan/40 hover:shadow-glow"
+          >
+            <div class="flex items-baseline gap-3">
+              <span class="font-mono text-sm text-cyan">{String(i + 1).padStart(2, '0')}</span>
+              <h2 class="text-xl font-bold tracking-tight text-ink">{s.title}</h2>
+            </div>
+            <p class="mt-2 text-sm text-muted">{s.summary}</p>
+            <div class="mt-4 flex flex-wrap gap-2">
+              {namesFor(s.slug).map((n) => (
+                <span class="rounded-full border border-line bg-bg px-2.5 py-1 font-mono text-[11px] text-muted">
+                  {n}
+                </span>
+              ))}
+            </div>
+            <span class="mt-5 inline-flex items-center gap-1 text-sm font-semibold text-cyan group-hover:underline">
+              Explore →
+            </span>
+          </a>
+        ))
+      }
+    </div>
+
+    <div class="mt-12 rounded-2xl border border-line bg-surface/50 p-6 sm:p-8">
+      <h2 class="text-lg font-semibold">New to APDTFlow?</h2>
+      <p class="mt-2 text-muted">
+        Start with the <a href={url('quickstart')} class="text-cyan hover:underline">Quickstart</a>
+        for the 60-second tour, see the capabilities working in the
+        <a href={url('demos')} class="text-cyan hover:underline">Demos</a>, or read the
+        full <a href={docs.guide} class="text-cyan hover:underline">usage guide</a> and
+        <a href={docs.features} class="text-cyan hover:underline">capabilities reference</a>
+        on GitHub.
+      </p>
+    </div>
+  </div>
+</BaseLayout>

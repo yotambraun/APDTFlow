@@ -1,0 +1,76 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import FeatureCard from '../../components/FeatureCard.astro';
+import { featureSections, featureGroups, url } from '../../data/site';
+import type { FeatureSection } from '../../data/site';
+
+export function getStaticPaths() {
+  return featureSections.map((section, i) => {
+    const prev = featureSections[i - 1];
+    const next = featureSections[i + 1];
+    return { params: { slug: section.slug }, props: { section, prev, next } };
+  });
+}
+
+interface Props {
+  section: FeatureSection;
+  prev?: FeatureSection;
+  next?: FeatureSection;
+}
+const { section, prev, next } = Astro.props;
+const groups = featureGroups.filter((g) => g.section === section.slug);
+---
+
+<BaseLayout title={section.title} description={`${section.title} in APDTFlow — ${section.summary}`}>
+  <PageHeader eyebrow="Capabilities" title={section.title} intro={section.intro} />
+
+  <div class="wrap pb-8">
+    <a href={url('features')} class="text-sm text-muted hover:text-ink">← All features</a>
+  </div>
+
+  <div class="wrap space-y-14 pb-12">
+    {
+      groups.map((group) => (
+        <section>
+          <h2 class="text-2xl font-bold tracking-tight">{group.title}</h2>
+          <p class="mt-2 max-w-2xl text-muted">{group.blurb}</p>
+          <div
+            class={
+              group.layout === 'list'
+                ? 'mt-6 grid gap-4 md:grid-cols-2'
+                : 'mt-6 grid gap-5 md:grid-cols-2'
+            }
+          >
+            {group.items.map((item) => (
+              <FeatureCard item={item} compact={group.layout === 'list'} />
+            ))}
+          </div>
+        </section>
+      ))
+    }
+  </div>
+
+  <div class="wrap flex items-center justify-between gap-4 border-t border-line py-8">
+    {
+      prev ? (
+        <a href={url(`features/${prev.slug}`)} class="group text-sm">
+          <span class="block text-xs text-muted">← Previous</span>
+          <span class="font-semibold text-ink group-hover:text-cyan">{prev.title}</span>
+        </a>
+      ) : (
+        <span />
+      )
+    }
+    {
+      next ? (
+        <a href={url(`features/${next.slug}`)} class="group text-right text-sm">
+          <span class="block text-xs text-muted">Next →</span>
+          <span class="font-semibold text-ink group-hover:text-cyan">{next.title}</span>
+        </a>
+      ) : (
+        <span />
+      )
+    }
+  </div>
+</BaseLayout>

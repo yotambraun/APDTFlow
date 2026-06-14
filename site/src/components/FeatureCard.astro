@@ -1,0 +1,46 @@
+---
+import CodeBlock from './CodeBlock.astro';
+import type { FeatureItem } from '../data/site';
+import { exampleUrl } from '../data/site';
+
+interface Props {
+  item: FeatureItem;
+  compact?: boolean; // list-style groups render tighter, no CodeBlock
+}
+const { item, compact = false } = Astro.props;
+---
+
+<article class={`card flex flex-col p-6 ${compact ? '' : 'sm:p-7'}`}>
+  <h3 class="text-lg font-semibold text-ink">{item.name}</h3>
+  <p class="mt-1 text-sm font-medium text-cyan">{item.value}</p>
+  <p class="mt-3 text-sm leading-relaxed text-muted">{item.description}</p>
+
+  {
+    item.api && (
+      <code class="mt-4 block overflow-x-auto rounded-lg border border-line bg-bg px-3 py-2 font-mono text-xs text-ink">
+        {item.api}
+      </code>
+    )
+  }
+
+  {!compact && item.snippet && <CodeBlock code={item.snippet} />}
+
+  {
+    item.note && (
+      <p class="mt-3 font-mono text-xs text-muted">
+        <span class="text-green">ℹ</span> {item.note}
+      </p>
+    )
+  }
+
+  {
+    item.example && (
+      <a
+        href={exampleUrl(item.example)}
+        class="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-cyan hover:underline"
+      >
+        see example: {item.exampleLabel ?? item.example} →
+      </a>
+    )
+  }
+</article>

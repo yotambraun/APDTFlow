@@ -1,0 +1,44 @@
+---
+import { site, url, img, nav } from '../data/site';
+---
+
+<header
+  class="sticky top-0 z-50 border-b border-line/80 bg-bg/70 backdrop-blur-md"
+>
+  <nav class="wrap flex h-16 items-center justify-between gap-4">
+    <a href={url('')} class="flex items-center gap-2.5 shrink-0">
+      <img src={img('logo_dark.png')} alt="APDTFlow" class="h-8 w-auto" />
+      <span class="sr-only">APDTFlow</span>
+    </a>
+
+    <div class="hidden items-center gap-7 md:flex">
+      {
+        nav.map((item) => (
+          <a
+            href={item.href}
+            class="text-sm text-muted transition-colors hover:text-ink"
+          >
+            {item.label}
+          </a>
+        ))
+      }
+    </div>
+
+    <div class="flex items-center gap-3">
+      <a
+        href={site.repo}
+        target="_blank"
+        rel="noopener"
+        class="hidden text-sm text-muted transition-colors hover:text-ink sm:inline"
+        >GitHub</a
+      >
+      <a
+        href={site.pypi}
+        target="_blank"
+        rel="noopener"
+        class="rounded-lg border border-line bg-surface px-3 py-1.5 font-mono text-xs text-cyan transition-colors hover:border-cyan/50"
+        >pip install apdtflow</a
+      >
+    </div>
+  </nav>
+</header>

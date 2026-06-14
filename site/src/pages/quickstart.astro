@@ -1,0 +1,78 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageHeader from '../components/PageHeader.astro';
+import InstallCommand from '../components/InstallCommand.astro';
+import CodeBlock from '../components/CodeBlock.astro';
+import Button from '../components/Button.astro';
+import { site, url } from '../data/site';
+
+const sixtySecond = `from apdtflow import APDTFlowForecaster
+
+model = APDTFlowForecaster(forecast_horizon=40, decoder_type='continuous',
+                           use_conformal=True)
+model.fit(df, target_col='capacity', feature_cols=sensor_cols)
+
+model.predict()                                       # classic grid forecast
+model.predict_at(['2026-06-14 14:37', 3.6])           # value at ANY moment
+result = model.predict_when(threshold=1.4,            # WHEN it crosses the line
+                            direction='below')
+result.eta, result.act_by, result.censored
+schedule = model.predict_when_fleet(assets,           # whole fleet -> ranked schedule
+                                    threshold=1.4, direction='below')`;
+---
+
+<BaseLayout
+  title="Quickstart"
+  description="Install APDTFlow and answer all three forecasting questions in 60 seconds."
+>
+  <PageHeader
+    eyebrow="60-second start"
+    title="Quickstart"
+    intro="One install, one trained model, three kinds of questions. Continuous-time forecasting with calibrated uncertainty on both value and time."
+  />
+
+  <div class="wrap pb-16">
+    <div class="max-w-2xl">
+      <InstallCommand />
+    </div>
+
+    <h2 class="mt-12 text-2xl font-bold tracking-tight">The whole API at a glance</h2>
+    <p class="mt-2 max-w-2xl text-muted">
+      Two flags unlock the timing capabilities:
+      <code class="font-mono text-cyan">decoder_type='continuous'</code> swaps in the
+      Neural-ODE decoder you can query at any real-valued time, and
+      <code class="font-mono text-cyan">use_conformal=True</code> calibrates the
+      uncertainty windows.
+    </p>
+    <div class="max-w-3xl">
+      <CodeBlock code={sixtySecond} />
+    </div>
+
+    <div class="mt-10 grid gap-5 sm:grid-cols-3">
+      <div class="card p-5">
+        <code class="font-mono text-sm text-cyan">predict()</code>
+        <p class="mt-2 text-sm text-muted">Next k values on the grid, with optional conformal intervals.</p>
+      </div>
+      <div class="card p-5">
+        <code class="font-mono text-sm text-cyan">predict_at(times)</code>
+        <p class="mt-2 text-sm text-muted">Value at arbitrary timestamps — fractional steps, beyond the horizon.</p>
+      </div>
+      <div class="card border-cyan/30 p-5">
+        <code class="font-mono text-sm text-cyan">predict_when(threshold)</code>
+        <p class="mt-2 text-sm text-muted">A calibrated 90% window on the crossing time, plus an <code class="text-green">act_by</code> edge.</p>
+      </div>
+    </div>
+
+    <div class="mt-12 rounded-2xl border border-line bg-surface/50 p-6 sm:p-8">
+      <h3 class="text-lg font-semibold">Prefer a runnable notebook?</h3>
+      <p class="mt-2 text-muted">
+        The Quickstart notebook covers all three questions end-to-end and opens in Colab
+        with zero setup.
+      </p>
+      <div class="mt-5 flex flex-wrap gap-3">
+        <Button href={site.colab} variant="primary" external>Open in Colab</Button>
+        <Button href={url('demos')} variant="secondary">Walk through the demos →</Button>
+      </div>
+    </div>
+  </div>
+</BaseLayout>

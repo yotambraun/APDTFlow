@@ -1,0 +1,48 @@
+---
+// Styled, copyable code block. Pass the raw code as the `code` prop (kept as a
+// string so indentation and special chars are preserved verbatim).
+interface Props {
+  code: string;
+  lang?: string;
+}
+const { code, lang = 'python' } = Astro.props;
+---
+
+<div class="group relative my-5 overflow-hidden rounded-xl border border-line bg-bg">
+  <div class="flex items-center justify-between border-b border-line px-4 py-2">
+    <span class="font-mono text-[11px] uppercase tracking-wider text-muted">{lang}</span>
+    <button
+      type="button"
+      class="rounded-md border border-line px-2 py-1 font-mono text-[11px] text-muted transition-colors hover:border-cyan/50 hover:text-cyan"
+      data-copy={code}
+      aria-label="Copy code"
+    >
+      <span data-copy-label>Copy</span>
+    </button>
+  </div>
+  <pre class="overflow-x-auto p-4 text-sm leading-relaxed"><code class="font-mono text-ink">{code}</code></pre>
+</div>
+
+<script>
+  document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((btn) => {
+    if (btn.dataset.bound) return;
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(btn.getAttribute('data-copy') ?? '');
+        const label = btn.querySelector('[data-copy-label]');
+        if (label) {
+          const prev = label.textContent;
+          label.textContent = 'Copied';
+          btn.classList.add('text-green');
+          setTimeout(() => {
+            label.textContent = prev;
+            btn.classList.remove('text-green');
+          }, 1400);
+        }
+      } catch {
+        /* clipboard unavailable */
+      }
+    });
+  });
+</script>

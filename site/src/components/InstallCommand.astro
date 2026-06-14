@@ -1,0 +1,43 @@
+---
+import { site } from '../data/site';
+interface Props { class?: string; }
+const { class: extra = '' } = Astro.props;
+---
+
+<div
+  class={`group flex items-center gap-3 rounded-xl border border-line bg-surface/80 px-4 py-3 font-mono text-sm ${extra}`}
+>
+  <span class="select-none text-green">$</span>
+  <code class="text-ink" data-install>{site.install}</code>
+  <button
+    type="button"
+    class="ml-auto rounded-md border border-line px-2 py-1 text-xs text-muted transition-colors hover:border-cyan/50 hover:text-cyan"
+    data-copy={site.install}
+    aria-label="Copy install command"
+  >
+    <span data-copy-label>Copy</span>
+  </button>
+</div>
+
+<script>
+  document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const text = btn.getAttribute('data-copy') ?? '';
+      try {
+        await navigator.clipboard.writeText(text);
+        const label = btn.querySelector('[data-copy-label]');
+        if (label) {
+          const prev = label.textContent;
+          label.textContent = 'Copied';
+          btn.classList.add('text-green', 'border-green/50');
+          setTimeout(() => {
+            label.textContent = prev;
+            btn.classList.remove('text-green', 'border-green/50');
+          }, 1400);
+        }
+      } catch {
+        /* clipboard unavailable */
+      }
+    });
+  });
+</script>

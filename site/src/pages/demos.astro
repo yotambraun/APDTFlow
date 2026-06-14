@@ -1,0 +1,114 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageHeader from '../components/PageHeader.astro';
+import CodeBlock from '../components/CodeBlock.astro';
+import { img, site, url } from '../data/site';
+
+const predictAtCode = `from apdtflow import APDTFlowForecaster, set_seed
+set_seed(0)
+
+model = APDTFlowForecaster(
+    forecast_horizon=14, history_length=60, num_epochs=8,
+    decoder_type='continuous',   # enables predict_at / predict_when
+    use_conformal=True,          # calibrated uncertainty
+)
+model.fit(df, target_col=value_col, date_col=date_col)
+
+# query at arbitrary times: fractional steps and beyond the horizon
+values, lower, upper = model.predict_at([3.5, 7.2, 14.0, 18.0])`;
+
+const predictWhenCode = `model = APDTFlowForecaster(
+    forecast_horizon=24, history_length=48, num_epochs=8,
+    decoder_type='continuous', use_conformal=True,
+)
+model.fit(train, target_col='sunspots')
+
+# "When will solar activity rise above 80?"
+result = model.predict_when(80, direction='above', alpha=0.1)
+result.eta        # point estimate, e.g. t+9.0 months
+result.earliest   # 90% window lower edge
+result.latest     # 90% window upper edge
+result.act_by     # schedule by THIS, not eta
+result.censored   # True if no crossing within the horizon
+
+# risk mode: earliest plausible crossing for safety-critical scheduling
+risk = model.predict_when(80, direction='above', mode='risk', alpha=0.1)`;
+
+const fleetCode = `# a dict of {asset_id: recent_series} for the whole fleet
+schedule = model.predict_when_fleet(
+    assets, threshold=1.4, direction='below', alpha=0.1,
+)
+
+# returns a DataFrame sorted by act_by, ready for a CMMS:
+#   asset_id | eta | earliest | latest | act_by | censored | confidence
+schedule.to_csv('maintenance_schedule.csv')`;
+
+const demos = [
+  {
+    id: 'predict-at',
+    eyebrow: 'predict_at',
+    title: 'Forecast at any moment in time',
+    body: 'One trained model, queried at arbitrary real-valued timestamps — fractional steps, between observations, even beyond the trained horizon — because the decoder integrates a continuous-time ODE. Conformal intervals come interpolated across time.',
+    code: predictAtCode,
+    image: 'predict_at_demo.png',
+    caption: 'predict_at on a solar-activity series: queried at fractional and beyond-horizon times, with interpolated conformal bands.',
+  },
+  {
+    id: 'predict-when',
+    eyebrow: 'predict_when',
+    title: 'A calibrated answer to "when?"',
+    body: 'Windows are calibrated on crossing-time errors (time space), not value bands — the distinction that makes the coverage hold. The returned act_by edge is the window’s earliest plausible crossing, which is what you schedule against.',
+    code: predictWhenCode,
+    image: 'predict_when_demo.png',
+    caption: 'The calibrated 90% window covered the true crossing, and the act_by edge landed before it.',
+  },
+  {
+    id: 'fleet',
+    eyebrow: 'predict_when_fleet',
+    title: 'A whole fleet, ranked by act-by date',
+    body: 'One call turns real NASA jet engines (never seen in training) into a maintenance schedule sorted by act-by date, with what actually happened marked. In this measured snapshot the calibrated windows covered 81% of the actual crossings.',
+    code: fleetCode,
+    image: 'apdtflow_fleet_dashboard.png',
+    caption: 'predict_when_fleet() output: an act-by-sorted schedule, exportable to CSV or dict for a CMMS.',
+  },
+];
+---
+
+<BaseLayout
+  title="Demos"
+  description="Three runnable demos: predict_at, predict_when, and fleet scheduling, on real data."
+>
+  <PageHeader
+    eyebrow="See it work"
+    title="Demos"
+    intro="Three capabilities no grid forecaster offers, each with the code that produced the plot. Every figure comes from a committed script in the repo."
+  />
+
+  <div class="wrap space-y-20 pb-16">
+    {
+      demos.map((d, i) => (
+        <section id={d.id} class="grid items-start gap-8 lg:grid-cols-2">
+          <div class={i % 2 === 1 ? 'lg:order-2' : ''}>
+            <p class="eyebrow mb-2">{d.eyebrow}</p>
+            <h2 class="text-2xl font-bold tracking-tight sm:text-3xl">{d.title}</h2>
+            <p class="mt-3 text-muted">{d.body}</p>
+            <CodeBlock code={d.code} />
+          </div>
+          <figure class={`card overflow-hidden ${i % 2 === 1 ? 'lg:order-1' : ''}`}>
+            <img src={img(d.image)} alt={d.title} loading="lazy" class="w-full border-b border-line" />
+            <figcaption class="px-5 py-4 text-sm text-muted">{d.caption}</figcaption>
+          </figure>
+        </section>
+      ))
+    }
+
+    <div class="rounded-2xl border border-line bg-surface/50 p-6 sm:p-8">
+      <p class="text-muted">
+        The full demo scripts live in
+        <a href={`${site.repo}/tree/main/examples`} class="text-cyan hover:underline">examples/</a>.
+        Run them with <code class="font-mono text-cyan">python examples/predict_when_demo.py</code>,
+        or jump to the <a href={url('evidence')} class="text-cyan hover:underline">measured benchmarks</a>.
+      </p>
+    </div>
+  </div>
+</BaseLayout>

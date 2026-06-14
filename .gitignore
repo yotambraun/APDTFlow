@@ -19,6 +19,11 @@ dist/
 apdtflow.egg-info/
 *.egg
 
+# Showcase site (site/) — Node deps and Astro build output
+site/node_modules/
+site/dist/
+site/.astro/
+
 # IDE and Editor
 .vscode/
 .idea/

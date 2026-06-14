@@ -10,6 +10,7 @@ on:
       - 'examples/**'
       - '.gitignore'
       - 'assets/**'
+      - 'site/**'
       - '*.ipynb'
   pull_request:
     branches: [ main ]
@@ -20,6 +21,7 @@ on:
       - 'examples/**'
       - '.gitignore'
       - 'assets/**'
+      - 'site/**'
       - '*.ipynb'
 
 jobs:

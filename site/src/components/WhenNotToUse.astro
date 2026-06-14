@@ -1,0 +1,28 @@
+---
+import { whenNot } from '../data/site';
+---
+
+<section class="wrap py-16">
+  <div class="card border-line/80 p-8 sm:p-10">
+    <div class="grid gap-8 lg:grid-cols-[1fr_1.4fr] lg:items-center">
+      <div>
+        <p class="eyebrow mb-3">Honesty as a feature</p>
+        <h2 class="text-3xl font-bold tracking-tight">When <span class="text-muted">not</span> to use APDTFlow</h2>
+        <p class="mt-3 text-muted">
+          The forecasting library that tells you its own limits. If your problem is in this
+          list, reach for something else — and we say which.
+        </p>
+      </div>
+      <ul class="space-y-3">
+        {
+          whenNot.map((item) => (
+            <li class="flex gap-3 text-sm text-muted">
+              <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-line ring-2 ring-line" />
+              <span>{item}</span>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </div>
+</section>

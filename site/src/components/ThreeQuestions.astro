@@ -1,0 +1,37 @@
+---
+import { questions } from '../data/site';
+---
+
+<section class="wrap py-16">
+  <div class="mb-10 max-w-2xl">
+    <p class="eyebrow mb-3">One trained model</p>
+    <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">Three questions, one API</h2>
+    <p class="mt-3 text-muted">
+      The same continuous-time model answers all three — from the next k values to the
+      exact moment a threshold is crossed.
+    </p>
+  </div>
+
+  <div class="grid gap-5 md:grid-cols-3">
+    {
+      questions.map((item) => (
+        <div
+          class={`card flex flex-col p-6 ${
+            item.emphasized ? 'border-cyan/40 shadow-glow' : ''
+          }`}
+        >
+          {item.emphasized && (
+            <span class="mb-3 inline-flex w-fit rounded-full border border-cyan/40 bg-cyan/10 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-cyan">
+              the differentiator
+            </span>
+          )}
+          <p class="text-pretty text-base font-medium text-ink">{item.q}</p>
+          <code class="mt-4 block rounded-lg border border-line bg-bg px-3 py-2 font-mono text-sm text-cyan">
+            {item.api}
+          </code>
+          <p class="mt-3 text-sm text-muted">{item.blurb}</p>
+        </div>
+      ))
+    }
+  </div>
+</section>

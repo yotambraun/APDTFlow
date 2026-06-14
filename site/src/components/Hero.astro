@@ -1,0 +1,50 @@
+---
+import { site, url } from '../data/site';
+import Button from './Button.astro';
+import InstallCommand from './InstallCommand.astro';
+import StatCallouts from './StatCallouts.astro';
+import HeroVisual from './HeroVisual.astro';
+---
+
+<section class="relative overflow-hidden">
+  <div class="wrap grid items-center gap-12 py-16 lg:grid-cols-[1.05fr_1fr] lg:py-24">
+    <div>
+      <p class="eyebrow mb-5">Continuous-time forecasting · Neural ODEs</p>
+
+      <h1 class="text-balance text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">
+        know <span class="gradient-text">WHEN</span><br />it will happen
+      </h1>
+
+      <p class="mt-6 max-w-xl text-pretty text-lg leading-relaxed text-muted">
+        Forecasting tools tell you <span class="text-ink">what</span> the value will be.
+        APDTFlow models time as continuous, so it also answers the question operations
+        teams actually ask: <span class="text-ink">when will it cross the line?</span>
+        — with a calibrated window on the time itself.
+      </p>
+
+      <div class="mt-8 max-w-md">
+        <InstallCommand />
+      </div>
+
+      <div class="mt-6 flex flex-wrap items-center gap-3">
+        <Button href={url('quickstart')} variant="primary">Quickstart</Button>
+        <Button href={site.repo} variant="secondary" external>View on GitHub</Button>
+        <Button href={url('evidence')} variant="ghost">See the benchmarks →</Button>
+      </div>
+
+      <div class="mt-10 max-w-lg">
+        <StatCallouts />
+      </div>
+    </div>
+
+    <div class="relative">
+      <div class="card p-5 shadow-glow sm:p-7">
+        <div class="mb-4 flex items-center justify-between">
+          <span class="eyebrow">predict_when</span>
+          <span class="font-mono text-xs text-muted">calibrated 90% window</span>
+        </div>
+        <HeroVisual />
+      </div>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,52 @@
+---
+import { capabilities } from '../data/site';
+
+const cols = [
+  { key: 'apdtflow', label: 'APDTFlow' },
+  { key: 'grid', label: 'Grid DL libs' },
+  { key: 'foundation', label: 'Foundation models' },
+] as const;
+
+function mark(v: string) {
+  if (v === 'yes') return { ch: '✓', cls: 'text-green' };
+  if (v === 'partial') return { ch: '~', cls: 'text-cyan/70' };
+  return { ch: '✕', cls: 'text-muted/40' };
+}
+---
+
+<section class="wrap py-16">
+  <div class="mb-10 max-w-2xl">
+    <p class="eyebrow mb-3">Capabilities, not accuracy</p>
+    <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">What each tool family offers</h2>
+    <p class="mt-3 text-muted">
+      For pure grid accuracy on regular data, tuned deep models or foundation models may
+      be stronger. APDTFlow's value is what grid models cannot do at all.
+    </p>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="w-full min-w-[600px] border-collapse text-left">
+      <thead>
+        <tr class="border-b border-line text-xs uppercase tracking-wide text-muted">
+          <th class="py-3 pr-4 font-medium">Capability</th>
+          {cols.map((c) => <th class="px-4 py-3 text-center font-medium">{c.label}</th>)}
+        </tr>
+      </thead>
+      <tbody>
+        {
+          capabilities.map((row) => (
+            <tr class="border-b border-line/60">
+              <td class="py-3.5 pr-4 text-sm text-ink">{row.label}</td>
+              {cols.map((c) => {
+                const m = mark(row[c.key]);
+                return (
+                  <td class={`px-4 py-3.5 text-center text-lg font-bold ${m.cls}`}>{m.ch}</td>
+                );
+              })}
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+</section>

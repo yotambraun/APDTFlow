@@ -1,0 +1,23 @@
+---
+import { fetchStats, versionLabel } from '../data/stats';
+import { site } from '../data/site';
+const stats = await fetchStats();
+
+const items = [
+  { value: stats.downloads, label: 'PyPI downloads' },
+  { value: stats.stars, label: 'GitHub stars' },
+  { value: site.license, label: 'License' },
+  { value: versionLabel, label: 'Latest release' },
+];
+---
+
+<dl class="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-4">
+  {
+    items.map((it) => (
+      <div class="bg-surface/80 px-4 py-3">
+        <dt class="font-mono text-lg font-bold text-ink">{it.value}</dt>
+        <dd class="mt-0.5 text-[11px] uppercase tracking-wide text-muted">{it.label}</dd>
+      </div>
+    ))
+  }
+</dl>

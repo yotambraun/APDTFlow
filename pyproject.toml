@@ -62,8 +62,8 @@ serve = ["fastapi", "uvicorn"]
 dev = ["pytest", "pytest-cov", "flake8", "mypy", "build", "twine"]
 
 [project.urls]
-Homepage = "https://github.com/yotambraun/APDTFlow"
-Documentation = "https://github.com/yotambraun/APDTFlow"
+Homepage = "https://yotambraun.github.io/APDTFlow/"
+Documentation = "https://yotambraun.github.io/APDTFlow/"
 Source = "https://github.com/yotambraun/APDTFlow"
 
 [tool.pytest.ini_options]

@@ -4,6 +4,7 @@
 
 # APDTFlow: know WHEN it will happen
 
+[![Website](https://img.shields.io/badge/website-apdtflow-22d3ee.svg)](https://yotambraun.github.io/APDTFlow/)
 [![PyPI version](https://img.shields.io/pypi/v/apdtflow.svg)](https://pypi.org/project/apdtflow)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Downloads](https://pepy.tech/badge/apdtflow)](https://pepy.tech/project/apdtflow)
@@ -12,6 +13,9 @@
 [![Coverage](https://codecov.io/gh/yotambraun/APDTFlow/branch/main/graph/badge.svg)](https://codecov.io/gh/yotambraun/APDTFlow)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yotambraun/APDTFlow/blob/main/Quickstart.ipynb)
 
+### [**Visit the website -> yotambraun.github.io/APDTFlow**](https://yotambraun.github.io/APDTFlow/)
+
+**[Website](https://yotambraun.github.io/APDTFlow/)** ·
 **[Quickstart](Quickstart.ipynb)** ·
 **[Documentation](docs/index.md)** ·
 **[Methodology](docs/METHODOLOGY.md)** ·

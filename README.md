@@ -17,6 +17,7 @@
 
 **[Website](https://yotambraun.github.io/APDTFlow/)** ·
 **[Quickstart](Quickstart.ipynb)** ·
+**[Features](https://yotambraun.github.io/APDTFlow/features/)** ·
 **[Documentation](docs/index.md)** ·
 **[Methodology](docs/METHODOLOGY.md)** ·
 **[Benchmarks](docs/experiment_results.md)** ·
@@ -173,6 +174,10 @@ use a foundation model for grid accuracy, APDTFlow is complementary.
 - Very short series (< ~500 points): use ETS/ARIMA.
 
 ## Industry-grade plumbing
+
+*Each capability below, with what it's for and a usage snippet, is on the
+[Features page](https://yotambraun.github.io/APDTFlow/features/) (and in
+[docs/features.md](docs/features.md)).*
 
 - Split & adaptive **conformal prediction** on every API; time-space calibrated
   windows for event timing

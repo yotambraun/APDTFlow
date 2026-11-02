@@ -278,7 +278,8 @@ print("-" * 70)
 
 print("Switch between architectures with a single parameter!\n")
 
-for model_type in ['apdtflow', 'transformer', 'tcn', 'ensemble']:
+# ('ensemble' is available as a module-level class, not through this API.)
+for model_type in ['apdtflow', 'transformer', 'tcn']:
     model = APDTFlowForecaster(
         model_type=model_type,
         forecast_horizon=14,

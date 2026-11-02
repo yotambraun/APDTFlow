@@ -1147,14 +1147,6 @@ class APDTFlowForecaster:
             )
             steps = self.forecast_horizon
 
-        # Check exog requirements - only require exog_future for numerical exog
-        # Categorical features can be auto-generated
-        if self.has_numerical_exog_ and exog_future is None:
-            raise ValueError(
-                "Model was trained with numerical exogenous variables. "
-                "Please provide exog_future parameter for prediction."
-            )
-
         self.model.eval()
 
         with torch.no_grad():
@@ -1172,29 +1164,9 @@ class APDTFlowForecaster:
                     device=self.device
                 )
 
-                # Prepare exog if needed
-                exog_tensor = None
-                if self.has_exog_ and exog_future is not None:
-                    # Process future exog
-                    if isinstance(exog_future, pd.DataFrame):
-                        exog_array = exog_future[self.future_exog_cols_ or self.exog_cols_].values
-                    else:
-                        exog_array = np.array(exog_future)
-
-                    # Normalize using stored parameters
-                    exog_norm = (exog_array - self.exog_mean_) / self.exog_std_
-
-                    # Combine with last exog sequence
-                    if self.last_exog_sequence_ is not None:
-                        full_exog = np.vstack([self.last_exog_sequence_, exog_norm[:steps]])
-                        exog_input = full_exog[:self.history_length]
-                    else:
-                        exog_input = exog_norm[:self.history_length]
-
-                    exog_tensor = torch.tensor(
-                        exog_input,
-                        dtype=torch.float32
-                    ).T.unsqueeze(0).to(self.device)
+                # Exogenous input: the stored input-window values (see
+                # _exog_tensor_for_window; exog_future is validated there).
+                exog_tensor = self._exog_tensor_for_window(exog_future, steps)
 
                 # Predict
                 preds, pred_logvars = self.model(x, t_span, exog=exog_tensor)
@@ -1296,27 +1268,37 @@ class APDTFlowForecaster:
         return float(tau)
 
     def _exog_tensor_for_window(self, exog_future, steps: int):
-        """Build the exogenous tensor for the last fitted window."""
+        """Exogenous input for the last fitted window, shape (1, n_exog, T_in).
+
+        The model conditions on exogenous values inside its input window
+        (the last ``history_length`` observations, stored at fit time), which
+        is what it was trained on. ``exog_future`` is still required for
+        models fitted with numerical exogenous columns (API contract), but
+        future values do not change the forecast: future-known covariates
+        are not modelled yet. A one-time warning says so.
+        """
         if not self.has_exog_:
             return None
         if self.has_numerical_exog_ and exog_future is None:
             raise ValueError(
                 "Model was trained with numerical exogenous variables. "
-                "Please provide exog_future."
+                "Please provide exog_future parameter for prediction."
             )
-        if exog_future is None:
+        if exog_future is not None and not getattr(self, '_warned_exog_future', False):
+            warnings.warn(
+                "exog_future does not change the forecast: APDTFlow conditions on "
+                "exogenous values inside the input window (the last history_length "
+                "observations seen in fit). Future-known covariates are not "
+                "modelled yet; see docs/index.md#exogenous-and-categorical-features.",
+                UserWarning,
+                stacklevel=3,
+            )
+            self._warned_exog_future = True
+        if self.last_exog_sequence_ is None:
             return None
-        if isinstance(exog_future, pd.DataFrame):
-            exog_array = exog_future[self.future_exog_cols_ or self.exog_cols_].values
-        else:
-            exog_array = np.array(exog_future)
-        exog_norm = (exog_array - self.exog_mean_) / self.exog_std_
-        if self.last_exog_sequence_ is not None:
-            full_exog = np.vstack([self.last_exog_sequence_, exog_norm[:steps]])
-            exog_input = full_exog[:self.history_length]
-        else:
-            exog_input = exog_norm[:self.history_length]
-        return torch.tensor(exog_input, dtype=torch.float32).T.unsqueeze(0).to(self.device)
+        return torch.tensor(
+            np.asarray(self.last_exog_sequence_), dtype=torch.float32
+        ).T.unsqueeze(0).to(self.device)
 
     def _trajectory_at(self, offsets: np.ndarray, exog_future=None) -> np.ndarray:
         """Denormalized mean-trajectory values at float step offsets."""

@@ -4,6 +4,7 @@ Tests the ExogenousFeatureFusion module and integration with APDTFlow.
 """
 import torch
 import numpy as np
+import pandas as pd
 import pytest
 from apdtflow.exogenous import ExogenousFeatureFusion, ExogenousProcessor
 
@@ -338,3 +339,41 @@ class TestAPDTFlowWithExogenous:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+def _exog_frame(n=240):
+    rng = np.random.default_rng(0)
+    t = np.arange(n)
+    promo = (rng.random(n) < 0.2).astype(float)
+    return pd.DataFrame({
+        "y": np.sin(t / 7) + 2 * promo + rng.normal(0, 0.1, n),
+        "promo": promo,
+        "temp": np.cos(t / 5),
+        "holiday": (t % 7 == 0).astype(float),
+    })
+
+
+def test_future_exog_subset_of_exog_cols_predicts():
+    """future_exog_cols a strict subset of exog_cols used to crash (shape mismatch)."""
+    from apdtflow import APDTFlowForecaster
+    df = _exog_frame()
+    m = APDTFlowForecaster(forecast_horizon=7, history_length=20, num_epochs=1,
+                           verbose=False, device="cpu")
+    m.fit(df, target_col="y", exog_cols=["promo", "temp", "holiday"],
+          future_exog_cols=["promo", "holiday"])
+    future = pd.DataFrame({"promo": np.zeros(7), "holiday": np.ones(7)})
+    with pytest.warns(UserWarning, match="does not change the forecast"):
+        preds = m.predict(exog_future=future)
+    assert preds.shape == (7,) and np.isfinite(preds).all()
+
+
+def test_exog_future_values_do_not_change_the_forecast():
+    """Documented behaviour: the model conditions on the input-window exog only."""
+    from apdtflow import APDTFlowForecaster
+    df = _exog_frame()
+    m = APDTFlowForecaster(forecast_horizon=7, history_length=20, num_epochs=1,
+                           verbose=False, device="cpu")
+    m.fit(df, target_col="y", exog_cols=["promo", "temp"], future_exog_cols=["promo", "temp"])
+    a = m.predict(exog_future=pd.DataFrame({"promo": np.zeros(7), "temp": np.zeros(7)}))
+    b = m.predict(exog_future=pd.DataFrame({"promo": np.full(7, 5.0), "temp": np.full(7, -9.0)}))
+    np.testing.assert_array_equal(a, b)

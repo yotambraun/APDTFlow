@@ -63,7 +63,8 @@ print("\n" + "="*60)
 print("Bonus: Try different model architectures!")
 print("="*60)
 
-for model_type in ['transformer', 'tcn', 'ensemble']:
+# ('ensemble' is available as a module-level class, not through this API.)
+for model_type in ['transformer', 'tcn']:
     print(f"\n🔮 Training {model_type} model...")
     model = APDTFlowForecaster(
         model_type=model_type,

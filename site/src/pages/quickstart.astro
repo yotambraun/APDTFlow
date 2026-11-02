@@ -32,7 +32,7 @@ model.fit(df, target_col="Daily minimum temperatures", date_col="Date")
 
 print(model.predict())                          # next 14 days
 print(model.predict_at(["1991-01-01 14:37", 3.6]))  # any moment: timestamp or step offset
-r = model.predict_when(threshold=13.0, direction="below", alpha=0.1)
+r = model.predict_when(threshold=11.0, direction="below", alpha=0.1)  # below 11 °C?
 print(r.eta, r.earliest, r.latest, r.act_by, r.censored)  # schedule by act_by`;
 ---
 
@@ -65,7 +65,9 @@ print(r.eta, r.earliest, r.latest, r.act_by, r.censored)  # schedule by act_by`;
 
     <h2 class="mt-12 text-2xl font-bold tracking-tight">Run it now</h2>
     <p class="mt-2 max-w-2xl text-muted">
-      Real data, about a minute on a laptop CPU. <code class="font-mono text-cyan">device='auto'</code>
+      Real data, about a minute on a laptop CPU. <code class="font-mono text-cyan">censored=True</code>
+      is a valid answer ("no crossing within the horizon at this confidence"), and the usual
+      one here. <code class="font-mono text-cyan">device='auto'</code>
       (the default) uses a CUDA GPU or Apple MPS when present;
       <a href={docs.gpu} class="text-cyan hover:underline">when a GPU actually helps</a>.
     </p>

@@ -38,6 +38,11 @@ def main():
         batch_size=128,
         decoder_type="continuous",
         use_conformal=True,
+        # The committed figure was produced with the most recent 20% of windows
+        # held out for calibration. With the default (0.0) this origin returns
+        # censored=True: the expected trajectory runs just under 80, so small
+        # training differences decide whether it crosses. One fit is one draw.
+        calibration_split=0.2,
         verbose=True,
     )
     model.fit(train, target_col="sunspots")

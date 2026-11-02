@@ -68,14 +68,17 @@ model.fit(df, target_col="Daily minimum temperatures", date_col="Date")
 
 print(model.predict())                          # next 14 days
 print(model.predict_at(["1991-01-01 14:37", 3.6]))  # any moment: timestamp or step offset
-r = model.predict_when(threshold=13.0, direction="below", alpha=0.1)
+r = model.predict_when(threshold=11.0, direction="below", alpha=0.1)  # below 11 °C?
 print(r.eta, r.earliest, r.latest, r.act_by, r.censored)  # schedule by act_by
 ```
 
 Runs in about a minute on a laptop CPU (67 s measured on an i7-12700H, download included). `decoder_type="continuous"` enables `predict_at` / `predict_when`;
 `use_conformal=True` calibrates the value intervals and `predict_when`'s time window
 with conformal prediction. A result with `censored=True` means "no crossing
-within the horizon at this confidence", which is a valid answer.
+within the horizon at this confidence", which is a valid answer, and on this series the
+usual one: a 14-day forecast of the daily minimum stays near its recent level. Event
+timing on real degradation data, measured over many seeds, is in the next section; a
+single fit is one draw.
 
 ## Measured results (scripts in `experiments/`)
 
@@ -109,7 +112,7 @@ to trust each horizon.
 | | |
 |---|---|
 | ![predict_at](examples/predict_at_demo.png) | ![predict_when](examples/predict_when_demo.png) |
-| `predict_at`: one model queried at arbitrary real-valued times, with interpolated conformal intervals (`examples/predict_at_demo.py`). | `predict_when`: a calibrated time window for "when will solar activity rise above 80?" (`examples/predict_when_demo.py`). |
+| `predict_at`: one model queried at arbitrary real-valued times, with interpolated conformal intervals (`examples/predict_at_demo.py`). | `predict_when`: "when will solar activity rise above 80?" The point estimate (month 23) is late; the 90% window (months 7–23) held the real crossing at month 10, and `act_by` (month 7) was on time (`examples/predict_when_demo.py`). |
 
 ## Is the base forecaster accurate?
 

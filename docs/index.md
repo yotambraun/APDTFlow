@@ -13,7 +13,8 @@ We are not aware of another forecasting library offering calibrated event-time
 forecasting (`predict_when`) and arbitrary-timestamp queries (`predict_at`) from one
 trained model (as of June 2026).
 
-Every published number is reproducible from a committed script; the full methodology,
+Every published number comes from a committed script (single-seed runs are labelled as
+such; a multi-seed re-run of the battery audit is in the results); the full methodology,
 including what we tested and chose **not** to ship, is in
 [METHODOLOGY.md](METHODOLOGY.md). Measured results: [experiment_results.md](experiment_results.md).
 
@@ -25,6 +26,7 @@ including what we tested and chose **not** to ship, is in
 - [Getting started: three questions, one model](#getting-started-three-questions-one-model)
 - [The operational rule](#the-operational-rule)
 - [Conformal uncertainty](#conformal-uncertainty)
+- [Devices: CPU, CUDA, Apple MPS](#devices-cpu-cuda-apple-mps)
 - [Multivariate input and the fleet API](#multivariate-input-and-the-fleet-api)
 - [Exogenous and categorical features](#exogenous-and-categorical-features)
 - [Backtesting](#backtesting)
@@ -50,9 +52,12 @@ cd APDTFlow
 pip install -e .
 ```
 
-Requires Python 3.10+ and PyTorch (installed automatically, with `torchdiffeq` for the
-ODE solvers). Optional extras: `apdtflow[serve]` (FastAPI serving),
-`apdtflow[mlflow]`, `apdtflow[wandb]`, `apdtflow[dev]`.
+Requires Python 3.10–3.14 and PyTorch (installed automatically, with `torchdiffeq` for
+the ODE solvers). For an NVIDIA GPU install the CUDA build of PyTorch first
+([pytorch.org](https://pytorch.org/get-started/locally/)); on CPU-only Linux,
+`pip install torch --index-url https://download.pytorch.org/whl/cpu` avoids the large
+CUDA download. Optional extras: `apdtflow[serve]` (FastAPI serving),
+`apdtflow[mlflow]`, `apdtflow[wandb]`, `apdtflow[tensorboard]`, `apdtflow[dev]`.
 
 ## Getting started: three questions, one model
 
@@ -126,6 +131,16 @@ Fit with `use_conformal=True` to calibrate distribution-free prediction interval
 lower, preds, upper = model.predict(return_intervals="conformal", alpha=0.05)
 ```
 
+**Calibration data is held out.** With `use_conformal=True` the most recent
+`calibration_split` fraction of training windows (default `0.2`) is never trained on;
+those windows calibrate the value intervals and the `predict_when` time windows. A
+purge gap of `forecast_horizon - 1` windows separates the two parts so no training
+target overlaps a calibration target. `calibration_split=0.0` calibrates on the
+training windows themselves (the only behaviour before 0.5.0): intervals are then
+optimistic, because a model's errors on data it has fit are smaller than on new
+data. If the series is too short to hold out windows, `fit` warns and falls back to
+in-sample calibration.
+
 A consequence of the default MSE training objective that we want users to understand:
 the model's raw variance head is untrained under MSE, so every uncertainty band
 APDTFlow publishes — value intervals and `predict_when` time windows alike — comes
@@ -134,6 +149,21 @@ train with `loss_type='nll'`). `predict_when` windows are calibrated directly on
 **crossing-time errors** in time space; value-space bands mapped onto the time axis
 miscalibrate badly, which we measured
 ([METHODOLOGY.md, Section 4](METHODOLOGY.md#4-uncertainty-conformal-prediction-in-value-space-and-in-time-space)).
+
+## Devices: CPU, CUDA, Apple MPS
+
+```python
+model = APDTFlowForecaster(device="auto")   # default: cuda, then mps, then cpu
+model = APDTFlowForecaster(device="cuda:1") # or "cuda", "mps", "cpu", a torch.device
+model.to("cpu")                            # move a fitted model, e.g. for serving
+```
+
+Training, conformal calibration, `predict`, `predict_at`, `predict_when`,
+`predict_when_fleet`, `score_recent` and backtesting all run on the selected device;
+only inputs and results cross to the host. Asking for a backend that is not
+available raises a `ValueError` that says how to fix it. When a GPU actually helps
+(and when the CPU is faster), with measured numbers:
+[gpu_and_performance.md](gpu_and_performance.md).
 
 ## Multivariate input and the fleet API
 
@@ -182,6 +212,15 @@ model.fit(
 preds = model.predict(exog_future=future_df)
 ```
 
+**What the model sees.** Exogenous values enter over the *input window*: the model
+learns how the covariates in the last `history_length` steps relate to what comes
+next. Future-known covariates are **not modelled yet**: `exog_future` is required
+for models with numerical exogenous columns, but its values do not change the
+forecast (measured; the first call warns). Modelling future covariates, such as a
+planned promotion next week, is on the roadmap. `historical_forecasts` with
+exogenous columns uses each fold's own exogenous window, in both the fixed-model and
+`retrain=True` modes.
+
 `feature_cols` (multivariate input) and `exog_cols`/`categorical_cols` are mutually
 exclusive. See `examples/exogenous_variables_demo.py` and
 `examples/categorical_features_demo.py`.
@@ -216,7 +255,8 @@ apdtflow infer --csv_file data.csv --date_col DATE --value_col VALUE \
 ```
 
 `--ode_method` accepts `rk4` (default) or `dopri5_adjoint`; `--decoder_type` accepts
-`transformer` (default) or `continuous`.
+`transformer` (default) or `continuous`; `--device` accepts `auto` (default), `cuda`,
+`mps` or `cpu`.
 
 ## Saving, loading, and TorchScript export
 
@@ -230,7 +270,9 @@ with an explanatory error: those versions contained a defect that made predictio
 independent of the input data, and such models cannot be repaired — retrain on
 ≥ 0.4.0 ([METHODOLOGY.md, Section 8](METHODOLOGY.md#8-engineering-history)).
 Saved state includes the conformal calibration data, so `predict_when` works
-immediately after `load`.
+immediately after `load`. Weights are stored on CPU, so a model trained on a GPU
+loads on any machine; `load(path, device="cuda")` (default `"auto"`) picks where it
+runs. Checkpoints are pickles: load only files you trust.
 
 For Python-free serving of grid forecasts:
 
@@ -267,8 +309,9 @@ set_seed(0)
 
 Seeds Python, NumPy, and PyTorch; with `deterministic=True` (the default) PyTorch is
 additionally switched to deterministic algorithms and a single CPU thread, trading
-speed for bit-for-bit reproducibility — the configuration used for the published
-benchmark numbers.
+speed for bit-for-bit reproducibility on the same hardware and software — the
+configuration used for the published benchmark numbers. For speed, use
+`set_seed(0, deterministic=False)`, which keeps all CPU threads.
 
 ## Further reading
 

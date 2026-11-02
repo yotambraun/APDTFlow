@@ -5,7 +5,10 @@ how every published number was produced, and — equally important — what we t
 chose **not** to ship. It exists because users asked for it (GitHub Issue #1), and
 because a forecasting package should be able to show its work.
 
-Every number cited here is reproducible by a script committed under `experiments/`.
+Every number cited here comes from a script committed under `experiments/`. Most audits
+are single-seed runs; a November 2026 multi-seed re-run of the battery audit showed
+seed-to-seed spread larger than its margin over the linear baseline
+([experiment_results.md §3.1](experiment_results.md#31-battery-end-of-life-nasa-pcoe-cells-b0005b0006b0007)).
 
 ---
 
@@ -24,6 +27,9 @@ learned ordinary differential equation, integrated with `torchdiffeq` (Chen et a
 discrete recurrence — is what later enables `predict_at` and `predict_when` (Sections 3
 and 5). We integrate with fixed-step RK4 by default (`ode_method="rk4"`, ~10x faster on
 CPU); the adaptive adjoint method remains available (`ode_method="dopri5_adjoint"`).
+Since 0.5.0 the RK4 loop is APDTFlow's own implementation of torchdiffeq's step
+(bit-identical, without a GPU-host synchronisation per step), and all scales are
+integrated as one batch; see [gpu_and_performance.md](gpu_and_performance.md).
 
 **Time embedding with gated residual networks.** Calendar/time-index information enters
 through a learnable embedding processed by gated residual networks in the style of the
@@ -88,6 +94,16 @@ miscalibrates when trajectories are steep or flat. Calibrating directly on
 split — is the method behind every `predict_when` window we publish; its coverage is
 unit-tested at >= 85% on the held-out sunspots fixture.
 
+**Held-out calibration windows (since 0.5.0).** Split conformal's coverage argument
+needs calibration residuals the model was not fitted on. Through 0.4.x the
+calibration split was in fact the training windows, so residuals were in-sample and
+intervals optimistic. Since 0.5.0 the most recent `calibration_split` fraction of
+windows (default 20%) is held out of training, separated from the training windows by
+a purge gap of `forecast_horizon − 1` windows so that no training target overlaps a
+calibration target. Using the *most recent* windows also means calibration reflects
+the regime closest to the forecast origin. The published audits (Section 6) were
+measured under the 0.4 protocol and their scripts pin it (`calibration_split=0.0`).
+
 **Asymmetric windows.** Crossing-time errors are systematically signed (Section 5), so
 we calibrate the 5th and 95th percentiles of *signed* errors rather than a symmetric
 absolute quantile. Measured on the NASA battery audit, the calibrated windows reach
@@ -143,7 +159,7 @@ is leave-unit-out (unseen batteries, unseen engines). Point-forecast accuracy is
 reported as MAE relative to seasonal-naive, i.e. MASE-style scaling (Hyndman & Koehler,
 2006).
 
-### Verified results (measured June 2026)
+### Verified results (measured June 2026, single seed)
 
 | Audit (real NASA data, held-out units) | APDTFlow | Linear | Persistence | Coverage (90% target) | False alarms |
 |---|---|---|---|---|---|
@@ -157,7 +173,9 @@ every row is reproduced by a committed script. We publish the losses with the wi
 linear extrapolation beats the model on FD002's full event set, multivariate fusion
 trades coverage for sharpness rather than dominating, and cross-unit window coverage
 runs below its target on the engine audits. APDTFlow's measured advantages are
-timing wins on battery and FD001 (including FD001's matched subset, 8.5 vs 9.7),
+timing wins on battery and FD001 in these single-seed runs (including FD001's matched
+subset, 8.5 vs 9.7; a 4-seed battery re-run in November 2026 put APDTFlow on par
+with linear, mean 10.0 vs 9.7, see experiment_results.md §3.1),
 near-zero false alarms everywhere (0/2,638 no-crossing windows on FD002), and
 beating persistence by 2–7 cycles on every audit. The base forecaster's general
 accuracy is reported honestly in the README: it beats seasonal-naive on 3 of 6

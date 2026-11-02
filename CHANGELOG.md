@@ -5,6 +5,154 @@ All notable changes to APDTFlow will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - Unreleased
+
+GPU and device support done properly, honest held-out conformal calibration,
+and a single modern packaging setup.
+
+### Changed — behaviour (read before upgrading)
+- **`calibration_split` now works** (it was documented as "fraction of data held
+  for calibration" but was silently ignored: conformal intervals and
+  `predict_when` time windows were calibrated on the very windows the model had
+  trained on, which makes them optimistic). With `use_conformal=True` the most
+  recent `calibration_split` fraction of windows (default `0.2`) is now held out
+  of training and used only for calibration, with a purge gap of
+  `forecast_horizon - 1` windows so no training target overlaps a calibration
+  target. Expect wider, more honest intervals and windows, and a model trained on
+  ~80% of the windows. `calibration_split=0.0` restores the 0.4 behaviour (the
+  experiment scripts behind the published 0.4.0 numbers pass it, so they keep
+  measuring the same protocol). If the data is too short to hold out calibration
+  windows, `fit` warns and falls back to in-sample calibration.
+- `device` now defaults to `"auto"`, which picks **CUDA, then Apple MPS, then
+  CPU** (0.4 picked CUDA or CPU). Requesting an unavailable backend
+  (`device="cuda"` without a CUDA build of PyTorch, `device="mps"` off Apple
+  silicon) raises a clear `ValueError` instead of failing inside `fit`.
+- `use_conformal=True` with `model_type='transformer'`/`'tcn'` now raises before
+  training instead of after it.
+- Early stopping now restores the best validation weights also when training ends
+  without exhausting the patience, and the saved "best" weights are a real copy
+  (they were live references that kept changing, so the restore was a no-op).
+
+### Added
+- `device="auto" | "cuda" | "mps" | "cpu"` (or `"cuda:1"`, or a `torch.device`)
+  on `APDTFlowForecaster`, `APDTFlowForecaster.load`, and `apdtflow train/infer
+  --device`; `apdtflow.resolve_device()` exposes the same resolution logic.
+- `APDTFlowForecaster.to(device)` moves a fitted model, e.g. train on a GPU and
+  serve on CPU.
+- [docs/gpu_and_performance.md](docs/gpu_and_performance.md): when a GPU helps and
+  when it does not, with a measured CPU vs CUDA benchmark; reproducible with the
+  new `benchmarks/benchmark_device.py`.
+- Device-parametrized tests (`tests/test_device.py`): the full pipeline (fit,
+  `predict`, `predict_at`, `predict_when`, `predict_when_fleet`, `score_recent`,
+  conformal calibration, multivariate, exogenous, transformer/TCN, save/load,
+  `to()`) on CPU, and on CUDA / MPS when present.
+- Python 3.13 and 3.14 support (tested), `Typing :: Typed` classifier, and a
+  tag-triggered release workflow (PyPI Trusted Publishing, wheel smoke test,
+  GitHub release).
+- Optional extra `apdtflow[tensorboard]`.
+- `experiments/audit_predict_when.py --calibration-split/--device`;
+  `examples/serve_api.py` reads the device from `APDTFLOW_DEVICE` (default `cpu`).
+- `benchmarks/benchmark_amp.py`: the measurement behind not offering mixed
+  precision (autocast was slower and less accurate; see the GPU page).
+
+### Fixed
+- Models trained on a GPU could not be loaded on a CPU-only machine: `save()`
+  pickled CUDA tensors. Checkpoints now store CPU tensors, and `load()` maps any
+  tensors in older checkpoints to CPU before moving them to the requested device.
+- The CLI saves CPU checkpoints too.
+- `historical_forecasts(retrain=True)` built each fold's model from library
+  defaults (only the horizon, history length and epochs were carried over), so
+  backtests silently ignored `hidden_dim`, `learning_rate`, `decoder_type`,
+  `device` and the rest. Folds now use the forecaster's own configuration.
+- `predict_at` accepts lists that mix timestamps and float offsets, as the README
+  shows (`['2026-06-14 14:37', 3.6]`); `'3.6'` used to be parsed as a date.
+- Conformal calibration no longer logs at INFO level when `verbose=False`.
+- Exogenous variables: `predict` crashed when `future_exog_cols` was a strict subset
+  of `exog_cols` (future values were normalised with the statistics of all exog
+  columns; with one future column out of two the values were silently broadcast
+  instead). Models fitted with only `categorical_cols` dropped their exogenous
+  input at prediction time. Prediction now always feeds the model the exogenous
+  values of its input window, which is what it was trained on.
+- **Documented limitation, now explicit:** `exog_future` has never changed the
+  forecast (the model conditions on exogenous values inside the input window;
+  measured: very different future values give identical predictions). It is still
+  required for numerical exogenous models, and the first call now warns.
+  Modelling future-known covariates is on the roadmap.
+- `historical_forecasts` with exogenous columns produced no forecasts at all (every
+  fold raised for the missing `exog_future` and was skipped, ending in "No
+  forecasts generated"); in fixed-model mode it would also have reused the fitted
+  exogenous window. Each fold now uses its own exogenous window, in both modes.
+- Examples: `quickstart_easy_api.py` and `migrate_from_prophet.py` crashed
+  (`model_type='ensemble'` is not available through `APDTFlowForecaster`, and the
+  exog crash above); all examples and the Quickstart notebook now run on CPU.
+- The Quickstart notebook declared nbformat 4.5 without cell ids (invalid); cells
+  now have stable ids.
+- `ode_method='dopri5_adjoint'` on Apple MPS: torchdiffeq's adaptive solver keeps
+  its step-size bookkeeping in float64, which MPS does not support; APDTFlow now
+  runs it in float32 there.
+- The 0.4.0 wheel installed a stray top-level `tests` package into
+  `site-packages`; the wheel now contains only `apdtflow`.
+
+### Performance
+- The fixed-step RK4 integration (encoder and continuous decoder) no longer
+  synchronises the GPU with the host on every solver step: torchdiffeq's grid
+  loop compares tensor values in Python each step, and the encoder looked up its
+  conditioning input with a device-side `argmin` on every RK4 stage. APDTFlow
+  now performs the same arithmetic with host-side step bookkeeping; the solver
+  output is bit-identical to torchdiffeq (tested on CPU and CUDA).
+- With `ode_method='rk4'` (the default) the per-scale latent ODEs are integrated
+  as one batch (they share one dynamics network). Batching changes floating-point
+  rounding (~1e-7), so results match 0.4 to float32 rounding rather than
+  bit-for-bit; checkpoints are compatible. `dopri5_adjoint` keeps one solve per
+  scale so its adaptive step control is unchanged.
+- Net effect, measured on identical work (i7-12700H / RTX 3050 Ti laptop, WSL2;
+  `benchmarks/benchmark_device.py --calibration-split 0`): training epochs are
+  2.1–2.5x faster on CPU and 3.2–4.6x faster on CUDA than 0.4.0, and single-window
+  `predict()` is 2–6x faster. Details in docs/gpu_and_performance.md.
+- `DynamicDilationConv` no longer reads its dilation from the device on every
+  forward pass (another per-call GPU sync); it is cached until the parameter
+  changes.
+- The training loop accumulates the epoch loss on the device (one sync per epoch
+  instead of one per batch), uses pinned host memory and non-blocking copies on
+  CUDA, and conformal calibration keeps predictions on the device until the end.
+
+### Evidence
+- Re-ran the battery end-of-life audit (`experiments/battery_eol_demo.py`, which
+  gains `--seed` and `--out-dir`) on different hardware and PyTorch (i7-12700H,
+  PyTorch 2.14.1). The published June number (pooled timing MAE 8.3) did not
+  reproduce, with the 0.4.0 code as well as 0.5.0 (both 10.46 with the published
+  seed). Across 4 seeds APDTFlow scored 9.0–11.2 (mean 10.0) against linear
+  extrapolation's 9.7: on par, not ahead. README, docs and site now present the
+  June audits as single-seed results and show the re-run.
+
+### Docs and website
+- README rewritten shorter: value proposition, a runnable quickstart on real data,
+  the questions table (now with the fleet API), measured results with their caveats,
+  a GPU section, install notes per OS.
+- New docs/gpu_and_performance.md; docs/index.md (devices, held-out calibration,
+  portable checkpoints), docs/models.md (device and `calibration_split` rows, solver
+  notes), docs/features.md, METHODOLOGY.md and experiment_results.md updated.
+- Website: GPU & device selection feature, a measured "CPU or GPU?" section on the
+  evidence page, a runnable quickstart, the battery re-run, and a fix for horizontal
+  overflow on phones (feature and demo pages were 630–760 px wide at 390 px).
+
+### Removed
+- The deprecated aliases `HierarchicalNeuralDynamics` and
+  `adaptive_hierarchical_ode_solver` (kept through 0.4.x per the deprecation
+  policy); use `NeuralDynamics` and `solve_latent_ode`.
+- `tensorboard` and `pyyaml` are no longer installed by default (the package never
+  imported them); `pip install apdtflow[tensorboard]` if you use
+  `experiments/scripts/train.py --tensorboard`.
+
+### Packaging
+- One build configuration: `pyproject.toml` (PEP 621, SPDX `license = "MIT"`,
+  PEP 639 `license-files`). `setup.py`, `setup.cfg`, `MANIFEST.in`,
+  `requirements.txt` and `requirements-dev.txt` are gone; flake8 settings moved to
+  `.flake8`. `LICENSE` is the canonical MIT text (the copyright line had template
+  brackets).
+- CI: Python 3.10–3.14 on Linux plus macOS, a build + `twine check` job, CPU-only
+  PyTorch wheels, current action versions.
+
 ## [0.4.0] - 2026-06-12
 
 ### Fixed — CRITICAL

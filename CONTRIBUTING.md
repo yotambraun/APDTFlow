@@ -13,20 +13,30 @@ cd APDTFlow
 pip install -e ".[dev]"
 ```
 
+All packaging metadata lives in `pyproject.toml` (there is no `setup.py` or
+`requirements.txt`). On Linux, `pip install torch --index-url
+https://download.pytorch.org/whl/cpu` first gives a much smaller CPU-only PyTorch.
+
 Run the test suite:
 
 ```bash
-pytest                      # full suite (includes coverage report)
+pytest                      # full suite
 pytest -m "not slow"        # fast iteration; skips long-running training tests
 pytest -m slow              # the training/capability gates (run in CI on push to main)
+pytest tests/test_device.py # device tests: CPU always; CUDA/MPS variants run when present
+pytest --cov=apdtflow       # with a coverage report
 ```
 
 Lint and type-check before opening a PR:
 
 ```bash
-flake8 apdtflow tests
+flake8 apdtflow tests benchmarks
 mypy apdtflow
 ```
+
+Performance work: `python benchmarks/benchmark_device.py` reproduces the CPU vs
+GPU table in [docs/gpu_and_performance.md](docs/gpu_and_performance.md); report
+your hardware with any number you quote.
 
 Notes:
 
@@ -75,8 +85,8 @@ APDTFlow follows SemVer, with the usual pre-1.0 interpretation:
 - **Breaking changes land only in minor version bumps** (0.x → 0.(x+1)) and are
   called out in [CHANGELOG.md](CHANGELOG.md). Patch releases never break APIs.
 - **Deprecated names are kept as aliases for one minor release** before removal, e.g.
-  `HierarchicalNeuralDynamics` remains an alias of `NeuralDynamics` through the 0.4.x
-  series after the v0.4.0 rename.
+  `HierarchicalNeuralDynamics` stayed an alias of `NeuralDynamics` through the 0.4.x
+  series after the v0.4.0 rename and was removed in 0.5.0.
 - Model checkpoints embed the library version; loading refuses checkpoints from
   versions with known-invalid models (≤ 0.3.x) and warns across minor-version
   boundaries.
@@ -129,10 +139,19 @@ baselines on *your* data, with the same protocol behind every published result. 
 APDTFlow beats all baselines on your domain, open a PR with the audit output — we
 will feature the domain with your numbers and credit.
 
+## Releasing (maintainers)
+
+1. Bump `version` in `pyproject.toml` and `__version__` in `apdtflow/__init__.py`;
+   move the CHANGELOG "Unreleased" heading to the version and date.
+2. Merge to `main`, then tag and push: `git tag v0.5.0 && git push origin v0.5.0`.
+3. `.github/workflows/release.yml` checks the tag matches both version strings,
+   builds, runs `twine check`, smoke-tests the wheel, publishes to PyPI with
+   Trusted Publishing (no API token), and creates the GitHub release.
+
 ## Pull request checklist
 
 - [ ] `pytest -m "not slow"` passes locally; CI runs the full suite.
-- [ ] `flake8` and `mypy` are clean.
+- [ ] `flake8 apdtflow tests benchmarks` and `mypy apdtflow` are clean.
 - [ ] New behavior has tests; new claims have scripts.
 - [ ] CHANGELOG.md updated for user-visible changes.
 - [ ] Docs updated if the public API changed (`docs/index.md`, `docs/models.md`).

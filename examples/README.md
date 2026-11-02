@@ -106,6 +106,10 @@ curl -X POST localhost:8000/predict_when \
      -d '{"threshold": 1.4, "direction": "below"}'
 ```
 
+The service loads the model on CPU by default (single-window requests are faster
+there, see [docs/gpu_and_performance.md](../docs/gpu_and_performance.md)); set
+`APDTFLOW_DEVICE=cuda` to serve from a GPU.
+
 ---
 
 ## Notebooks

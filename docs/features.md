@@ -57,9 +57,10 @@ schedule.to_csv('maintenance_schedule.csv')
 ```
 
 **Calibrated uncertainty** — split and adaptive conformal calibration wraps any
-forecast in an interval whose coverage you can verify on held-out data.
-`predict_when`'s windows are calibrated in *time* space (on crossing-time errors),
-which is what keeps the 90% window honest.
+forecast in an interval whose coverage you can verify on held-out data. The most
+recent `calibration_split` (default 20%) of the training windows is held out of
+training and used only for calibration. `predict_when`'s windows are calibrated in
+*time* space (on crossing-time errors), which is what keeps the 90% window honest.
 
 ```python
 model = APDTFlowForecaster(use_conformal=True, conformal_method='split')  # or 'adaptive'
@@ -80,9 +81,10 @@ model.fit(df, target_col='soh', feature_cols=['voltage', 'current', 'temp'])
 model.sensor_importance_      # learned weight per input channel
 ```
 
-**Exogenous variables** — bring known drivers (promotions, weather) with
-`concat` / `gated` / `attention` fusion; pass `future_exog_cols` for drivers whose
-future values you will know.
+**Exogenous variables** — bring outside drivers (promotions, weather) with
+`concat` / `gated` / `attention` fusion. They are used over the input window;
+future-known values (`exog_future`) do not change the forecast yet (modelling them
+is on the roadmap; see the [usage guide](index.md#exogenous-and-categorical-features)).
 
 ```python
 model = APDTFlowForecaster(exog_fusion_type='gated')
@@ -137,7 +139,8 @@ s['coverage']      # vs expected coverage
 
 | Capability | Call |
 |---|---|
-| Persistence (keeps scalers + calibration) | `model.save('m.pt')` / `APDTFlowForecaster.load('m.pt')` |
+| GPU / device selection (`'auto'` = CUDA, then MPS, then CPU) | `APDTFlowForecaster(device='auto')`, `model.to('cpu')`; see [GPU & performance](gpu_and_performance.md) |
+| Persistence (keeps scalers + calibration; CPU-stored, loads on any device) | `model.save('m.pt')` / `APDTFlowForecaster.load('m.pt', device='auto')` |
 | TorchScript export (grid forecasts) | `model.export_torchscript('model.pt')` |
 | FastAPI serving | see [`examples/serve_api.py`](../examples/serve_api.py) |
 | Reproducible runs | `from apdtflow import set_seed; set_seed(0)` |

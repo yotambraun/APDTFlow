@@ -39,11 +39,15 @@ latent dynamics cleaner signals to integrate.
 
 Each scale component conditions a latent state evolved by `NeuralDynamics`, a learned
 ODE mapping `(t, (h, x_t))` to the time-derivatives of the latent mean and
-log-variance. Integration uses `torchdiffeq`:
+log-variance. All scales share one dynamics network.
 
-- `ode_method='rk4'` (default) — fixed-step RK4, roughly 10x faster on CPU;
-- `ode_method='dopri5_adjoint'` — adaptive Dormand–Prince with adjoint
-  backpropagation; lower memory for long sequences.
+- `ode_method='rk4'` (default) — fixed-step RK4 (torchdiffeq's 3/8-rule step, one
+  step per input time point), roughly 10x faster on CPU than the adaptive solver.
+  Since 0.5.0 APDTFlow runs this loop itself (`apdtflow/models/fixed_grid.py`,
+  bit-identical to `torchdiffeq.odeint(method='rk4')`) so a GPU is not synchronised
+  with the host on every step, and integrates all scales as one batch;
+- `ode_method='dopri5_adjoint'` — adaptive Dormand–Prince via `torchdiffeq` with
+  adjoint backpropagation; lower memory for long sequences.
 
 Treating the latent state as a continuous-time trajectory — rather than a discrete
 recurrence — is what later enables `predict_at` and `predict_when`.
@@ -210,7 +214,7 @@ high-level API — use the module-level class directly.
 | `learning_rate` | `0.001` | Adam learning rate |
 | `batch_size` | `32` | Training batch size |
 | `num_epochs` | `50` | Training epochs |
-| `device` | auto | `'cuda'` or `'cpu'`; auto-detected if `None` |
+| `device` | `'auto'` | `'auto'` (CUDA, then MPS, then CPU), `'cuda'`, `'cuda:N'`, `'mps'`, `'cpu'` or a `torch.device` ([GPU & performance](gpu_and_performance.md)) |
 | `use_embedding` | `True` | Additive learnable time embedding (Section 1.3) |
 | `loss_type` | `'mse'` | `'mse'` or `'nll'` |
 | `ode_method` | `'rk4'` | `'rk4'` or `'dopri5_adjoint'` (Section 1.2) |
@@ -218,7 +222,7 @@ high-level API — use the module-level class directly.
 | `exog_fusion_type` | `'gated'` | `'concat'`, `'gated'`, or `'attention'` |
 | `use_conformal` | `False` | Calibrate conformal intervals during `fit` (required for `predict_when`) |
 | `conformal_method` | `'split'` | `'split'` or `'adaptive'` |
-| `calibration_split` | `0.2` | Fraction of data held for calibration |
+| `calibration_split` | `0.2` | Fraction of the most recent training windows held out of training for conformal calibration (`0.0` = calibrate on the training windows, optimistic) |
 | `early_stopping` | `False` | Stop on stalled validation loss |
 | `patience` | `5` | Early-stopping patience (epochs) |
 | `validation_split` | `0.2` | Validation fraction when early stopping is on |
@@ -231,6 +235,9 @@ Choosing a configuration:
 - **Plain grid forecasting:** the defaults; add `use_conformal=True` for calibrated
   intervals.
 - **Long input windows on limited memory:** `ode_method='dopri5_adjoint'`.
+- **GPU:** raise `batch_size` (256 or more) and the model size; small default
+  models are often faster on CPU. Measured numbers:
+  [gpu_and_performance.md](gpu_and_performance.md).
 - **Multi-sensor equipment:** `fit(..., feature_cols=sensor_cols)`; inspect
   `sensor_importance_`. For equipment operating under multiple regimes, normalize
   per regime first with `apdtflow.preprocessing.regime_normalize`.

@@ -216,6 +216,15 @@ class APDTFlow(nn.Module):
         h_T = fused_seq[:, -1, :]
         return self.decoder(h_T, x_orig.squeeze(1), query_offsets)
 
+    @staticmethod
+    def _training_taus(horizon, device):
+        """Random off-grid query offsets for one training step, in (0, horizon).
+
+        The target at offset 0 is the last observed value, so offsets in
+        (0, 1] are interpolated from it.
+        """
+        return (torch.rand(horizon, device=device) * horizon).clamp(min=1e-3)
+
     def _continuous_training_loss(self, x_batch, y_batch, t_span, exog=None):
         """Randomized-query training loss for the continuous decoder.
 
@@ -223,19 +232,28 @@ class APDTFlow(nn.Module):
         linearly interpolates targets, so off-grid accuracy is trained
         rather than emergent. Combined with the grid loss to keep integer
         offsets sharp.
+
+        The computation never reads a value back to the host, so on CUDA a
+        whole training step can be captured as a CUDA graph.
         """
         device = x_batch.device
         horizon = self.forecast_horizon
         y = y_batch.transpose(1, 2)  # (B, H, out)
 
-        # Grid loss at integer offsets.
-        preds_grid, _ = self(x_batch, t_span, exog=exog)
-        loss_grid = ((preds_grid - y) ** 2).mean()
+        # One encoder pass and one decoder ODE solve serve both terms: the
+        # integer grid and the random queries all lie in (0, horizon], so the
+        # decoder integrates the same interval either way. Running them
+        # separately doubled the cost of every training step.
+        fused_seq, x_orig = self._encode(x_batch, t_span, exog=exog)
+        grid_offsets = torch.arange(1, horizon + 1, dtype=torch.float32, device=device)
+        taus = self._training_taus(horizon, device)
+        preds, _ = self.decoder.forward_train(
+            fused_seq[:, -1, :], x_orig.squeeze(1), torch.cat([grid_offsets, taus])
+        )
+        preds_grid, preds_rand = preds[:, :horizon], preds[:, horizon:]
 
-        # Randomized off-grid queries. The target at offset 0 is the last
-        # observed value, allowing interpolation in (0, 1].
-        taus = (torch.rand(horizon, device=device) * horizon).clamp(min=1e-3)
-        preds_rand, _ = self.forward_at(x_batch, t_span, taus, exog=exog)
+        # Grid loss at integer offsets.
+        loss_grid = ((preds_grid - y) ** 2).mean()
         anchor = x_batch[:, 0, -1].reshape(-1, 1, 1)  # (B, 1, 1)
         grid_targets = torch.cat([anchor, y], dim=1)  # offsets 0..H
         base = taus.floor().clamp(max=horizon - 1).long()  # in [0, H-1]

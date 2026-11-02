@@ -169,3 +169,51 @@ def test_offsets_accept_mixed_timestamps_and_floats():
     with pytest.raises(ValueError, match="date_col"):
         m._offsets_from_timestamps(["2026-06-16"])
     np.testing.assert_allclose(m._offsets_from_timestamps([3.0]), [3.0])
+
+
+def test_training_loss_encodes_and_decodes_once():
+    """The grid loss and the random-query loss share one encoder pass and one
+    decoder ODE solve; running each twice doubled the cost of every step."""
+    from apdtflow.models.apdtflow import APDTFlow
+
+    torch.manual_seed(0)
+    model = APDTFlow(num_scales=3, input_channels=1, filter_size=5, hidden_dim=8,
+                     output_dim=1, forecast_horizon=6, history_length=12,
+                     decoder_type="continuous")
+    calls = {"encode": 0, "decode": 0}
+    encode, decode = model._encode, model.decoder._decode_sorted
+
+    def counting_encode(*a, **k):
+        calls["encode"] += 1
+        return encode(*a, **k)
+
+    def counting_decode(*a, **k):
+        calls["decode"] += 1
+        return decode(*a, **k)
+
+    model._encode = counting_encode
+    model.decoder._decode_sorted = counting_decode
+    x, y = torch.randn(4, 1, 12), torch.randn(4, 1, 6)
+    loss = model._continuous_training_loss(x, y, torch.linspace(0, 1, 12))
+    loss.backward()
+    assert calls == {"encode": 1, "decode": 1}
+    assert torch.isfinite(loss)
+    assert model.decoder.skip.weight.grad is not None
+    assert model.dynamics_module.global_net[0].weight.grad is not None
+
+
+def test_training_loss_grid_term_matches_forward():
+    """With dropout off, the grid part of the shared solve equals forward()."""
+    from apdtflow.models.apdtflow import APDTFlow
+
+    torch.manual_seed(0)
+    model = APDTFlow(num_scales=3, input_channels=1, filter_size=5, hidden_dim=8,
+                     output_dim=1, forecast_horizon=6, history_length=12,
+                     decoder_type="continuous").eval()
+    x, t = torch.randn(4, 1, 12), torch.linspace(0, 1, 12)
+    fused, x_orig = model._encode(x, t)
+    grid = torch.arange(1, 7, dtype=torch.float32)
+    taus = torch.tensor([0.4, 2.5, 5.9])
+    both, _ = model.decoder(fused[:, -1, :], x_orig.squeeze(1), torch.cat([grid, taus]))
+    alone, _ = model(x, t)
+    torch.testing.assert_close(both[:, :6], alone)

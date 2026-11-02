@@ -6,10 +6,15 @@ forecast time. This is what powers ``predict_at`` (forecast at any
 moment) and ``predict_when`` (event-time forecasting).
 """
 
+import math
+
 import torch
 import torch.nn as nn
 
 from .fixed_grid import rk4_fixed_step
+
+# RK4 step size of the decoder ODE, in forecast steps.
+_STEP_SIZE = 0.25
 
 
 def _cubic_hermite_interpolate(grid_values, query, horizon):
@@ -53,19 +58,17 @@ def _cubic_hermite_interpolate(grid_values, query, horizon):
                + (-p0 + 3 * p1 - 3 * p2 + p3) * t3)
     )
 
-    # Linear extrapolation outside [1, H].
-    below = query < 1.0
-    above = query > float(horizon)
-    if below.any():
-        slope = grid_values[:, 1:2] - grid_values[:, :1]
-        delta = (query - 1.0).unsqueeze(0).expand(batch_size, -1)
-        lin = grid_values[:, :1] + slope * delta
-        interp = torch.where(below.unsqueeze(0).expand(batch_size, -1), lin, interp)
-    if above.any():
-        slope = grid_values[:, -1:] - grid_values[:, -2:-1]
-        delta = (query - float(horizon)).unsqueeze(0).expand(batch_size, -1)
-        lin = grid_values[:, -1:] + slope * delta
-        interp = torch.where(above.unsqueeze(0).expand(batch_size, -1), lin, interp)
+    # Linear extrapolation outside [1, H]. Applied unconditionally with
+    # torch.where (no `if mask.any()`), so the function never waits on the
+    # device and can run inside a captured CUDA graph.
+    below = (query < 1.0).unsqueeze(0).expand(batch_size, -1)
+    slope = grid_values[:, 1:2] - grid_values[:, :1]
+    delta = (query - 1.0).unsqueeze(0).expand(batch_size, -1)
+    interp = torch.where(below, grid_values[:, :1] + slope * delta, interp)
+    above = (query > float(horizon)).unsqueeze(0).expand(batch_size, -1)
+    slope = grid_values[:, -1:] - grid_values[:, -2:-1]
+    delta = (query - float(horizon)).unsqueeze(0).expand(batch_size, -1)
+    interp = torch.where(above, grid_values[:, -1:] + slope * delta, interp)
     return interp
 
 
@@ -135,16 +138,41 @@ class ContinuousODEDecoder(nn.Module):
             raise ValueError("query_offsets must be strictly positive")
 
         sorted_offsets, sort_idx = torch.sort(query_offsets)
-        # odeint requires strictly increasing, unique time points starting
-        # at the initial time.
+        # Duplicate offsets are integrated once.
         unique_offsets, inverse = torch.unique(sorted_offsets, return_inverse=True)
-        t_eval = torch.cat([torch.zeros(1, device=device), unique_offsets])
+        values, logvars = self._decode_sorted(h_T, x_window, unique_offsets)
 
+        # Map back from unique/sorted offsets to the caller's order.
+        values = values[:, inverse, :]
+        logvars = logvars[:, inverse, :]
+        return self._unsort(values, logvars, sort_idx)
+
+    def forward_train(self, h_T, x_window, query_offsets):
+        """Decode at training-time offsets without any host synchronisation.
+
+        For offsets in ``(0, forecast_horizon]`` whose largest value is exactly
+        ``forecast_horizon`` (the training loss always includes the integer
+        grid ``1..forecast_horizon``), this returns the same values as
+        :meth:`forward`. It skips input validation and de-duplication and
+        sizes the solver grid from the horizon instead of reading the largest
+        offset back from the device, so a whole training step can be captured
+        as a CUDA graph.
+        """
+        sorted_offsets, sort_idx = torch.sort(query_offsets)
+        n_grid = math.ceil(self.forecast_horizon / _STEP_SIZE + 1)
+        values, logvars = self._decode_sorted(h_T, x_window, sorted_offsets, n_grid=n_grid)
+        return self._unsort(values, logvars, sort_idx)
+
+    def _decode_sorted(self, h_T, x_window, offsets, n_grid=None):
+        """Values and log-variances at increasing, positive ``offsets``."""
+        t_eval = torch.cat([offsets.new_zeros(1), offsets])
         # Fixed step size keeps integration accuracy independent of how
         # sparse the query offsets are (e.g. a single far-out timestamp).
         # (Same arithmetic as torchdiffeq.odeint(method='rk4',
         # options={'step_size': 0.25}), without per-step host syncs.)
-        states = rk4_fixed_step(self._dynamics, h_T, t_eval, step_size=0.25)  # (T+1, B, H)
+        states = rk4_fixed_step(
+            self._dynamics, h_T, t_eval, step_size=_STEP_SIZE, n_grid=n_grid
+        )  # (T+1, B, H)
         states = states[1:]  # drop tau=0
 
         values = self.readout(states).permute(1, 0, 2)    # (B, U, out)
@@ -156,20 +184,15 @@ class ContinuousODEDecoder(nn.Module):
         )
         skip_vals = torch.stack(
             [
-                _cubic_hermite_interpolate(
-                    grid[:, :, d], unique_offsets, self.forecast_horizon
-                )
+                _cubic_hermite_interpolate(grid[:, :, d], offsets, self.forecast_horizon)
                 for d in range(self.output_dim)
             ],
             dim=-1,
         )  # (B, U, out)
-        values = values + skip_vals
+        return values + skip_vals, logvars
 
-        # Map back from unique/sorted offsets to the caller's order.
-        values = values[:, inverse, :]
-        logvars = logvars[:, inverse, :]
+    @staticmethod
+    def _unsort(values, logvars, sort_idx):
         unsort = torch.empty_like(sort_idx)
-        unsort[sort_idx] = torch.arange(len(sort_idx), device=device)
-        values = values[:, unsort, :]
-        logvars = logvars[:, unsort, :]
-        return values, logvars
+        unsort[sort_idx] = torch.arange(sort_idx.numel(), device=sort_idx.device)
+        return values[:, unsort, :], logvars[:, unsort, :]

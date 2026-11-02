@@ -75,19 +75,26 @@ def rk4_fixed_step(
     y0: torch.Tensor,
     t: torch.Tensor,
     step_size: float,
+    n_grid: Optional[int] = None,
 ) -> torch.Tensor:
-    """Fixed step-size RK4 evaluated at the (strictly increasing) times ``t``.
+    """Fixed step-size RK4 evaluated at the (increasing) times ``t``.
 
     Equivalent to ``torchdiffeq.odeint(func, y0, t, method='rk4',
     options={'step_size': step_size})``: states on the grid
     ``t[0], t[0] + step_size, ...`` (last point replaced by ``t[-1]``) and
     linear interpolation between grid points. Returns ``(len(t), *y0.shape)``.
+
+    ``n_grid`` is the number of grid points, ``ceil((t[-1] - t[0]) /
+    step_size + 1)``. Pass it when the caller already knows ``t[-1]`` to skip
+    the one host synchronisation this function otherwise needs, which makes
+    the call capturable in a CUDA graph.
     """
     start = t[0]
     end = t[-1]
-    # The grid length is the only value needed on the host (one sync per
-    # call, as in torchdiffeq).
-    n_grid = int(torch.ceil((end - start) / step_size + 1).item())
+    if n_grid is None:
+        # The grid length is the only value needed on the host (one sync per
+        # call, as in torchdiffeq).
+        n_grid = int(torch.ceil((end - start) / step_size + 1).item())
     grid = torch.arange(0, n_grid, dtype=t.dtype, device=t.device) * step_size + start
     grid[-1] = end
 

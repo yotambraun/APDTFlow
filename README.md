@@ -72,11 +72,11 @@ r = model.predict_when(threshold=11.0, direction="below", alpha=0.1)  # below 11
 print(r.eta, r.earliest, r.latest, r.act_by, r.censored)  # schedule by act_by
 ```
 
-Runs in about a minute on a laptop CPU (67 s measured on an i7-12700H, download included). `decoder_type="continuous"` enables `predict_at` / `predict_when`;
+Runs in about a minute and a half on a laptop CPU (87 s measured on an i7-12700H, download included). `decoder_type="continuous"` enables `predict_at` / `predict_when`;
 `use_conformal=True` calibrates the value intervals and `predict_when`'s time window
 with conformal prediction. A result with `censored=True` means "no crossing
-within the horizon at this confidence", which is a valid answer, and on this series the
-usual one: a 14-day forecast of the daily minimum stays near its recent level. Event
+within the horizon at this confidence", which is a valid answer, and a common one on
+this series: a 14-day forecast of the daily minimum stays near its recent level. Event
 timing on real degradation data, measured over many seeds, is in the next section; a
 single fit is one draw.
 

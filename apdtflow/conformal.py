@@ -94,8 +94,8 @@ class SplitConformalPredictor:
 
         self.is_calibrated = True
 
-        logger.info("Calibrated with %d samples", n)
-        logger.info("  Quantile at %.1f%% level: %.4f", 100 * (1 - self.alpha), self.quantile)
+        logger.debug("Calibrated with %d samples", n)
+        logger.debug("  Quantile at %.1f%% level: %.4f", 100 * (1 - self.alpha), self.quantile)
 
     @overload
     def predict(

@@ -305,3 +305,21 @@ def test_conformal_with_unsupported_model_fails_before_training():
                                device="cpu", verbose=False)
     with pytest.raises(ValueError, match="Conformal prediction is only supported"):
         model.fit(_series(120))
+
+
+def test_backtest_retrain_folds_keep_configuration_and_device(monkeypatch):
+    seen = []
+    original_init = APDTFlowForecaster.__init__
+
+    def spy(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        seen.append((self.hidden_dim, self.learning_rate, self.device.type))
+
+    monkeypatch.setattr(APDTFlowForecaster, "__init__", spy)
+    model = APDTFlowForecaster(forecast_horizon=5, history_length=20, num_epochs=1,
+                               hidden_dim=8, learning_rate=0.005, device="cpu",
+                               verbose=False)
+    df = pd.DataFrame({"y": _series(220)})
+    model.historical_forecasts(df, target_col="y", start=0.85, stride=10, retrain=True)
+    assert len(seen) > 1
+    assert all(entry == (8, 0.005, "cpu") for entry in seen)

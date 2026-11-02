@@ -2084,13 +2084,13 @@ class APDTFlowForecaster:
 
             if retrain:
                 # Retrain model on expanding window
-                temp_model = APDTFlowForecaster(
-                    model_type=self.model_type,
-                    forecast_horizon=forecast_horizon,
-                    history_length=self.history_length,
-                    num_epochs=self.num_epochs,
-                    verbose=False
-                )
+                # Same configuration and device as this forecaster (0.4 used
+                # library defaults for everything but the horizon, history
+                # and epochs); conformal calibration is not needed per fold.
+                fold_params = self.get_params()
+                fold_params.update(forecast_horizon=forecast_horizon,
+                                   use_conformal=False, verbose=False)
+                temp_model = APDTFlowForecaster(device=self.device, **fold_params)
                 try:
                     temp_model.fit(
                         train_data_slice,

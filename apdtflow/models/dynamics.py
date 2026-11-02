@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
-from torchdiffeq import odeint, odeint_adjoint
+from torchdiffeq import odeint_adjoint
+
+from .fixed_grid import rk4_on_grid
 
 ODE_METHODS = ("rk4", "dopri5_adjoint")
 
@@ -66,12 +68,29 @@ def solve_latent_ode(dynamics, h0, logvar0, t_span, x_scale_sequence, ode_method
             x_t = self.x_sequence[:, idx, :]
             return self.dynamics(t, (h, x_t))
 
-    func = ODEFunc(dynamics, x_scale_sequence, t_span)
     state0 = (h0, logvar0)
     if ode_method == "rk4":
-        sol = odeint(func, state0, t_span, method="rk4")
-    elif ode_method == "dopri5_adjoint":
-        sol = odeint_adjoint(func, state0, t_span, rtol=1e-3, atol=1e-3)
+        # Same arithmetic as torchdiffeq.odeint(func, ..., method="rk4") with
+        # the nearest-time-point lookup resolved on the host: on the RK4
+        # stages t0, t0+dt/3, t0+2dt/3, t1 of step k the nearest grid point
+        # is k, k, k+1, k+1. No per-step host synchronisation (fixed_grid.py).
+        def stage_input(k, stage):
+            return x_scale_sequence[:, k if stage < 2 else k + 1, :]
+
+        def func(t, state, x_t):
+            return dynamics(t, (state[0], x_t))
+
+        sol = rk4_on_grid(func, state0, t_span, stage_input=stage_input)
+        h_sol = sol[0].transpose(0, 1)
+        logvar_sol = sol[1].transpose(0, 1)
+        return h_sol, logvar_sol
+
+    func = ODEFunc(dynamics, x_scale_sequence, t_span)
+    if ode_method == "dopri5_adjoint":
+        # torchdiffeq's adaptive solvers keep step-size bookkeeping in
+        # float64 by default; MPS has no float64, so use float32 there.
+        options = {"dtype": torch.float32} if h0.device.type == "mps" else None
+        sol = odeint_adjoint(func, state0, t_span, rtol=1e-3, atol=1e-3, options=options)
     else:
         raise ValueError(
             f"Unknown ode_method {ode_method!r}; expected one of {ODE_METHODS}."

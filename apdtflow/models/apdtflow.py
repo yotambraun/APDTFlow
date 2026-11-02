@@ -134,21 +134,35 @@ class APDTFlow(nn.Module):
             x = self.exog_fusion(x, exog)
 
         scale_components = self.decomposer(x)
+        hidden_dim = self.dynamics_module.hidden_dim
 
-        latent_means = []
-        latent_logvars = []
-        for comp in scale_components:
-            comp_t = comp.transpose(1, 2)
-            h0 = torch.zeros(batch_size, self.dynamics_module.hidden_dim, device=x.device)
-            logvar0 = torch.zeros(batch_size, self.dynamics_module.hidden_dim, device=x.device)
+        # Keep the FULL latent trajectory (B, T_in, H) per scale so the
+        # decoder can attend over the whole encoded window.
+        if self.ode_method == 'rk4':
+            # All scales share one dynamics network, so integrate them as a
+            # single batch of n_scales * B trajectories: ~3x fewer (tiny)
+            # kernel launches and Python steps than one solve per scale.
+            comp_t = torch.cat([comp.transpose(1, 2) for comp in scale_components], dim=0)
+            h0 = torch.zeros(comp_t.size(0), hidden_dim, device=x.device, dtype=x.dtype)
             h_sol, logvar_sol = solve_latent_ode(
-                self.dynamics_module, h0, logvar0, t_span, comp_t,
+                self.dynamics_module, h0, torch.zeros_like(h0), t_span, comp_t,
                 ode_method=self.ode_method,
             )
-            # Keep the FULL latent trajectory (B, T_in, H) so the decoder
-            # can attend over the whole encoded window.
-            latent_means.append(h_sol)
-            latent_logvars.append(logvar_sol)
+            latent_means = list(h_sol.split(batch_size, dim=0))
+            latent_logvars = list(logvar_sol.split(batch_size, dim=0))
+        else:
+            # Adaptive solvers pick step sizes from the error of the whole
+            # batch, so scales are integrated separately to keep each
+            # scale's step control independent.
+            latent_means, latent_logvars = [], []
+            for comp in scale_components:
+                h0 = torch.zeros(batch_size, hidden_dim, device=x.device, dtype=x.dtype)
+                h_sol, logvar_sol = solve_latent_ode(
+                    self.dynamics_module, h0, torch.zeros_like(h0), t_span,
+                    comp.transpose(1, 2), ode_method=self.ode_method,
+                )
+                latent_means.append(h_sol)
+                latent_logvars.append(logvar_sol)
 
         fused_seq = self.fusion(latent_means, latent_logvars)  # (B, T_in, H)
         return fused_seq, x_orig

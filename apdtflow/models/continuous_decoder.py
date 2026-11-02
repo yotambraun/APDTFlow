@@ -8,7 +8,8 @@ moment) and ``predict_when`` (event-time forecasting).
 
 import torch
 import torch.nn as nn
-from torchdiffeq import odeint
+
+from .fixed_grid import rk4_fixed_step
 
 
 def _cubic_hermite_interpolate(grid_values, query, horizon):
@@ -141,10 +142,9 @@ class ContinuousODEDecoder(nn.Module):
 
         # Fixed step size keeps integration accuracy independent of how
         # sparse the query offsets are (e.g. a single far-out timestamp).
-        states = odeint(
-            self._dynamics, h_T, t_eval, method='rk4',
-            options={'step_size': 0.25},
-        )  # (T+1, B, H)
+        # (Same arithmetic as torchdiffeq.odeint(method='rk4',
+        # options={'step_size': 0.25}), without per-step host syncs.)
+        states = rk4_fixed_step(self._dynamics, h_T, t_eval, step_size=0.25)  # (T+1, B, H)
         states = states[1:]  # drop tau=0
 
         values = self.readout(states).permute(1, 0, 2)    # (B, U, out)

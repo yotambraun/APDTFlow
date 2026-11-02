@@ -13,6 +13,7 @@ import warnings
 from tqdm import tqdm
 
 from .models.apdtflow import APDTFlow
+from .models.cuda_graphs import CUDAGraphTrainStep, graph_capture_supported
 from .models.transformer_forecaster import TransformerForecaster
 from .models.tcn_forecaster import TCNForecaster
 from .models.ensemble_forecaster import EnsembleForecaster
@@ -83,6 +84,13 @@ class APDTFlowForecaster:
         Use learnable time series embedding
     verbose : bool, default=True
         Print training progress
+    cuda_graphs : bool, default=True
+        On an NVIDIA GPU, capture each APDTFlow training step as a CUDA graph
+        and replay it. The arithmetic is unchanged; it removes the per-kernel
+        launch overhead that otherwise makes this model slower on a GPU than
+        on a CPU. Used only with ``device`` on CUDA, ``ode_method='rk4'`` and
+        no exogenous inputs; other configurations train eagerly. Set
+        ``False`` to train eagerly everywhere (e.g. while debugging).
 
     Examples
     --------
@@ -131,9 +139,11 @@ class APDTFlowForecaster:
         patience: int = 5,
         validation_split: float = 0.2,
         # NEW: Categorical variables support
-        categorical_encoding: str = 'onehot'
+        categorical_encoding: str = 'onehot',
+        cuda_graphs: bool = True,
     ):
         self.model_type = model_type
+        self.cuda_graphs = bool(cuda_graphs)
         self.num_scales = num_scales
         self.hidden_dim = hidden_dim
         self.filter_size = filter_size
@@ -858,7 +868,15 @@ class APDTFlowForecaster:
         # Train - use different training loops for different model types
         if self.model_type == 'apdtflow':
             # APDTFlow-specific training with Neural ODE
-            optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
+            assert isinstance(self.model, APDTFlow)
+            use_graphs = self.cuda_graphs and graph_capture_supported(
+                self.device, self.ode_method, has_exog_data
+            )
+            # A captured optimizer step needs its state (the step count) on
+            # the device: capturable=True.
+            optimizer = torch.optim.Adam(
+                self.model.parameters(), lr=self.learning_rate, capturable=use_graphs
+            )
 
             # Early stopping tracking
             best_val_loss = float('inf')
@@ -867,6 +885,29 @@ class APDTFlowForecaster:
 
             # Time grid of the input window (constant across batches).
             t_span = torch.linspace(0, 1, steps=self.history_length, device=self.device)
+
+            def batch_loss(x_batch, y_batch, exog_x_batch=None):
+                if self.decoder_type == 'continuous':
+                    # Randomized-query training: off-grid accuracy is
+                    # trained, not emergent.
+                    return self.model._continuous_training_loss(
+                        x_batch, y_batch, t_span, exog=exog_x_batch
+                    )
+                preds, pred_logvars = self.model(x_batch, t_span, exog=exog_x_batch)
+                mse = (preds - y_batch.transpose(1, 2)) ** 2
+                if self.loss_type == 'nll':
+                    return torch.mean(
+                        0.5 * (mse / (pred_logvars.exp() + 1e-6)) + 0.5 * pred_logvars
+                    )
+                return mse.mean()
+
+            graph_step = None
+            if use_graphs:
+                # One optimizer step replayed as a CUDA graph: same arithmetic,
+                # without ~20k kernel launches per step (models/cuda_graphs.py).
+                graph_step = CUDAGraphTrainStep(batch_loss, optimizer, self.batch_size)
+                if self.verbose:
+                    logger.info("Training with CUDA graphs (cuda_graphs=True)")
 
             # Create progress bar
             pbar = tqdm(range(self.num_epochs), desc="Training", disable=not self.verbose)
@@ -887,28 +928,13 @@ class APDTFlowForecaster:
                     x_batch = x_batch.to(self.device, non_blocking=non_blocking)
                     y_batch = y_batch.to(self.device, non_blocking=non_blocking)
 
-                    # Forward pass
-                    optimizer.zero_grad()
-                    if self.decoder_type == 'continuous':
-                        # Randomized-query training: off-grid accuracy is
-                        # trained, not emergent.
-                        assert isinstance(self.model, APDTFlow)
-                        loss = self.model._continuous_training_loss(
-                            x_batch, y_batch, t_span, exog=exog_x_batch
-                        )
+                    if graph_step is not None:
+                        loss = graph_step(x_batch, y_batch)
                     else:
-                        preds, pred_logvars = self.model(x_batch, t_span, exog=exog_x_batch)
-                        mse = (preds - y_batch.transpose(1, 2)) ** 2
-                        if self.loss_type == 'nll':
-                            loss = torch.mean(
-                                0.5 * (mse / (pred_logvars.exp() + 1e-6)) + 0.5 * pred_logvars
-                            )
-                        else:
-                            loss = mse.mean()
-
-                    # Backward pass
-                    loss.backward()
-                    optimizer.step()
+                        optimizer.zero_grad()
+                        loss = batch_loss(x_batch, y_batch, exog_x_batch)
+                        loss.backward()
+                        optimizer.step()
 
                     epoch_loss_t += loss.detach() * len(x_batch)
 
@@ -991,6 +1017,10 @@ class APDTFlowForecaster:
             # patience was never exhausted.
             if self.early_stopping and best_model_state is not None:
                 self.model.load_state_dict(best_model_state)
+            # Drop the gradients (with graphs, they live in the graph's
+            # memory pool) so a fitted model holds no training memory.
+            optimizer.zero_grad(set_to_none=True)
+            del graph_step
 
         else:
             # Other models (transformer, tcn, ensemble) use their own train_model() method
@@ -2224,7 +2254,7 @@ class APDTFlowForecaster:
         'num_epochs', 'use_embedding', 'verbose', 'loss_type', 'ode_method',
         'decoder_type', 'exog_fusion_type', 'use_conformal',
         'conformal_method', 'calibration_split', 'early_stopping', 'patience',
-        'validation_split', 'categorical_encoding',
+        'validation_split', 'categorical_encoding', 'cuda_graphs',
     )
 
     def get_params(self, deep: bool = True) -> Dict:

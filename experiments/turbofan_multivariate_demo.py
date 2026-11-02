@@ -98,6 +98,9 @@ def fit_forecaster(frames: dict, train_units: list, epochs: int) -> APDTFlowFore
         learning_rate=1e-3,
         decoder_type="continuous",
         use_conformal=True,
+        # In-sample calibration: the protocol behind the published 0.4.0 numbers
+        # (apdtflow >= 0.5 holds out the last 20% of windows by default).
+        calibration_split=0.0,
         verbose=False,
     )
     forecaster.fit(df, target_col=TARGET, feature_cols=FEATURES)

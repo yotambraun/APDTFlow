@@ -149,6 +149,13 @@ def main():
     parser.add_argument("--season", type=int, default=None,
                         help="seasonal period for the seasonal-naive baseline "
                              "(omit for non-seasonal series)")
+    parser.add_argument("--calibration-split", type=float, default=0.2,
+                        help="fraction of the training windows held out for the "
+                             "time-window calibration (apdtflow >= 0.5 default 0.2; "
+                             "0.0 = in-sample, the protocol of the committed 0.4.0 "
+                             "sunspots result)")
+    parser.add_argument("--device", default="auto",
+                        help="auto | cuda | mps | cpu")
     parser.add_argument("--seed", type=int, default=11)
     parser.add_argument("--verbose", action="store_true",
                         help="show training progress bars")
@@ -192,6 +199,8 @@ def main():
         learning_rate=1e-3,
         batch_size=64,
         num_epochs=args.epochs,
+        calibration_split=args.calibration_split,
+        device=args.device,
         verbose=args.verbose,
     )
     t0 = time.time()

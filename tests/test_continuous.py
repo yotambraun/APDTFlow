@@ -148,3 +148,24 @@ def test_predict_when_censored(fitted_continuous):
     assert r.censored
     eta, earliest, latest = r
     assert r.act_by == earliest
+
+
+def test_offsets_accept_mixed_timestamps_and_floats():
+    m = APDTFlowForecaster(device="cpu", verbose=False)
+    m.last_date_ = pd.Timestamp("2026-06-14")
+    m.freq_delta_ = pd.Timedelta(days=1)
+    np.testing.assert_allclose(
+        m._offsets_from_timestamps(["2026-06-14 12:00", 3.6, np.float32(2.0)]),
+        [0.5, 3.6, 2.0], rtol=1e-6)
+    np.testing.assert_allclose(m._offsets_from_timestamps(1.5), [1.5])
+    np.testing.assert_allclose(
+        m._offsets_from_timestamps(pd.date_range("2026-06-15", periods=2, freq="D")),
+        [1.0, 2.0])
+    np.testing.assert_allclose(
+        m._offsets_from_timestamps(np.array(["2026-06-16"], dtype="datetime64[ns]")), [2.0])
+    with pytest.raises(ValueError, match="strictly after"):
+        m._offsets_from_timestamps(["2026-06-13"])
+    m.last_date_ = None
+    with pytest.raises(ValueError, match="date_col"):
+        m._offsets_from_timestamps(["2026-06-16"])
+    np.testing.assert_allclose(m._offsets_from_timestamps([3.0]), [3.0])

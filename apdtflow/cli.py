@@ -4,6 +4,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from apdtflow.data import TimeSeriesWindowDataset
+from apdtflow.device import DEVICE_CHOICES, resolve_device
 
 
 def _build_model(args, device):
@@ -50,6 +51,12 @@ def _add_common_args(subparser):
         default="transformer",
         help="Decoder: transformer (default) or continuous-time ODE decoder.",
     )
+    subparser.add_argument(
+        "--device",
+        default="auto",
+        help=f"Device: one of {', '.join(DEVICE_CHOICES)} or e.g. cuda:1 "
+             "(default: auto = cuda, then mps, then cpu).",
+    )
     subparser.set_defaults(use_embedding=True)
 
 
@@ -84,13 +91,17 @@ def main():
     infer_parser.add_argument("--checkpoint_path", required=True)
 
     args = parser.parse_args()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if args.command is None:
+        parser.print_help()
+        return
+    device = resolve_device(args.device)
 
     if args.command == "train":
         dataset = TimeSeriesWindowDataset(
             args.csv_file, args.date_col, args.value_col, args.T_in, args.T_out
         )
-        train_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
+        train_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True,
+                                  pin_memory=device.type == "cuda")
         model = _build_model(args, device)
         model.train_model(
             train_loader,
@@ -100,7 +111,9 @@ def main():
             loss_type=args.loss_type,
         )
         if args.checkpoint_path:
-            torch.save(model.state_dict(), args.checkpoint_path)
+            # Stored on CPU so the checkpoint loads on any machine.
+            state = {k: v.detach().cpu() for k, v in model.state_dict().items()}
+            torch.save(state, args.checkpoint_path)
             print(f"Saved checkpoint to {args.checkpoint_path}")
     elif args.command == "infer":
         dataset = TimeSeriesWindowDataset(

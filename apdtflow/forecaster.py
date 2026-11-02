@@ -2,6 +2,8 @@
 High-Level API for APDTFlow models.
 Provides a simple fit/predict interface for easy time series forecasting.
 """
+import pickle
+
 import pandas as pd
 import numpy as np
 import torch
@@ -25,10 +27,25 @@ from .event_time import (
     batch_first_crossing_times,
     first_crossing_time,
 )
+from .device import DeviceLike, resolve_device
 from .logger_util import get_logger
 from .preprocessing.categorical_encoder import CategoricalEncoder
 
 logger = get_logger("apdtflow.forecaster")
+
+
+def _load_storage_on_cpu(data: bytes):
+    import io
+    return torch.load(io.BytesIO(data), map_location='cpu', weights_only=False)
+
+
+class _CPUUnpickler(pickle.Unpickler):
+    """Unpickler that maps every pickled torch storage to the CPU."""
+
+    def find_class(self, module, name):
+        if module == 'torch.storage' and name == '_load_from_bytes':
+            return _load_storage_on_cpu
+        return super().find_class(module, name)
 
 
 class APDTFlowForecaster:
@@ -57,8 +74,11 @@ class APDTFlowForecaster:
         Batch size for training
     num_epochs : int, default=50
         Number of training epochs
-    device : str, optional
-        Device to use ('cuda' or 'cpu'). Auto-detected if None
+    device : {'auto', 'cuda', 'mps', 'cpu'} or torch.device, default='auto'
+        Where to train and predict. ``'auto'`` (or ``None``) picks CUDA, then
+        Apple MPS, then CPU. Explicit indices such as ``'cuda:1'`` work.
+        Requesting an unavailable backend raises ``ValueError``. Move a
+        fitted model with :meth:`to`. See docs/gpu_and_performance.md.
     use_embedding : bool, default=True
         Use learnable time series embedding
     verbose : bool, default=True
@@ -94,7 +114,7 @@ class APDTFlowForecaster:
         learning_rate: float = 0.001,
         batch_size: int = 32,
         num_epochs: int = 50,
-        device: Optional[str] = None,
+        device: DeviceLike = 'auto',
         use_embedding: bool = True,
         verbose: bool = True,
         loss_type: str = 'mse',
@@ -183,11 +203,13 @@ class APDTFlowForecaster:
         self.last_date_: Optional[pd.Timestamp] = None
         self.freq_delta_: Optional[pd.Timedelta] = None
 
-        # Auto-detect device
-        if device is None:
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        else:
-            self.device = torch.device(device)
+        # Device: 'auto' -> cuda, then mps, then cpu (see apdtflow.device).
+        self.device = resolve_device(device)
+        if self.device.type == 'mps' and self.ode_method == 'dopri5_adjoint':
+            logger.info(
+                "ode_method='dopri5_adjoint' on MPS: the adaptive solver's time "
+                "bookkeeping is kept in float32 (MPS has no float64)."
+            )
 
         # Model will be initialized in fit()
         self.model: Optional[Union[APDTFlow, TransformerForecaster, TCNForecaster, EnsembleForecaster]] = None
@@ -547,6 +569,49 @@ class APDTFlowForecaster:
             torch.tensor(y, dtype=torch.float32).unsqueeze(1),
         )
 
+    def _calibration_split(self, dataset):
+        """Split training windows from held-out conformal calibration windows.
+
+        Returns ``(train_part, calib_part, in_sample)``. With
+        ``use_conformal=True`` and ``calibration_split > 0``, the most recent
+        ``calibration_split`` fraction of windows is held out for calibration.
+        A purge gap of ``forecast_horizon - 1`` windows is dropped between the
+        two parts so that no training target overlaps a calibration target.
+        ``calibration_split=0`` reproduces the pre-0.5 behaviour (calibration
+        on the training windows; intervals are then optimistic).
+        """
+        if not self.use_conformal:
+            return dataset, None, False
+        frac = float(self.calibration_split)
+        if not 0.0 <= frac < 1.0:
+            raise ValueError(f"calibration_split must be in [0, 1), got {frac!r}")
+        if frac == 0.0:
+            return dataset, dataset, True
+        n = len(dataset)
+        n_cal = int(round(n * frac))
+        gap = max(self.forecast_horizon - 1, 0)
+        n_train = n - n_cal - gap
+        if n_cal < 1 or n_train < n_cal:
+            warnings.warn(
+                f"Only {n} training windows: too few to hold out "
+                f"calibration_split={frac} for conformal calibration (need "
+                f"at least as many training windows as calibration windows, "
+                f"after a purge gap of {gap}). Falling back to in-sample "
+                f"calibration; intervals will be optimistic. Provide more data "
+                f"or lower calibration_split.",
+                UserWarning,
+            )
+            return dataset, dataset, True
+        if self.verbose:
+            logger.info(
+                f"Conformal calibration: {n_cal} held-out windows "
+                f"(calibration_split={frac}), {n_train} training windows, "
+                f"purge gap {gap}"
+            )
+        train_part = torch.utils.data.Subset(dataset, range(n_train))
+        calib_part = torch.utils.data.Subset(dataset, range(n - n_cal, n))
+        return train_part, calib_part, False
+
     def fit(
         self,
         data: Union[pd.DataFrame, np.ndarray],
@@ -594,6 +659,12 @@ class APDTFlowForecaster:
         if self.verbose:
             logger.info(f"Fitting {self.model_type} model...")
             logger.info(f"Device: {self.device}")
+
+        if self.use_conformal and self.model_type != 'apdtflow':
+            raise ValueError(
+                f"Conformal prediction is only supported with model_type='apdtflow'. "
+                f"Current model_type='{self.model_type}' does not support conformal prediction."
+            )
 
         # Validate model_type
         if self.model_type == 'ensemble':
@@ -754,23 +825,34 @@ class APDTFlowForecaster:
         else:
             dataset = TensorDataset(X, y)
 
+        # Held-out conformal calibration (v0.5.0): the last calibration_split
+        # of windows is reserved for calibration and never trained on.
+        train_part, calib_part, in_sample_calibration = self._calibration_split(dataset)
+
+        # Pinned host memory lets batches copy to the GPU asynchronously.
+        pin = self.device.type == 'cuda'
+        non_blocking = pin
+
         if self.early_stopping and self.validation_split > 0:
             # Split into train and validation
-            n_samples = len(dataset)
+            n_samples = len(train_part)
             n_val = int(n_samples * self.validation_split)
             n_train = n_samples - n_val
 
             train_dataset, val_dataset = torch.utils.data.random_split(
-                dataset, [n_train, n_val]
+                train_part, [n_train, n_val]
             )
 
-            train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
-            val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False)
+            train_loader = DataLoader(train_dataset, batch_size=self.batch_size,
+                                      shuffle=True, pin_memory=pin)
+            val_loader = DataLoader(val_dataset, batch_size=self.batch_size,
+                                    shuffle=False, pin_memory=pin)
 
             if self.verbose:
                 logger.info(f"Training samples: {n_train}, Validation samples: {n_val}")
         else:
-            train_loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+            train_loader = DataLoader(train_part, batch_size=self.batch_size,
+                                      shuffle=True, pin_memory=pin)
             val_loader = None
 
         # Train - use different training loops for different model types
@@ -783,30 +865,27 @@ class APDTFlowForecaster:
             epochs_without_improvement = 0
             best_model_state = None
 
+            # Time grid of the input window (constant across batches).
+            t_span = torch.linspace(0, 1, steps=self.history_length, device=self.device)
+
             # Create progress bar
             pbar = tqdm(range(self.num_epochs), desc="Training", disable=not self.verbose)
 
             for epoch in pbar:
                 self.model.train()
-                epoch_loss = 0.0
+                # Accumulate on the device; one host sync per epoch, not per batch.
+                epoch_loss_t = torch.zeros((), device=self.device)
 
                 for batch_data in train_loader:
                     if has_exog_data:
                         x_batch, y_batch, exog_x_batch, exog_y_batch = batch_data
-                        exog_x_batch = exog_x_batch.to(self.device)
+                        exog_x_batch = exog_x_batch.to(self.device, non_blocking=non_blocking)
                     else:
                         x_batch, y_batch = batch_data
                         exog_x_batch = None
 
-                    x_batch = x_batch.to(self.device)
-                    y_batch = y_batch.to(self.device)
-
-                    # Create time span
-                    t_span = torch.linspace(
-                        0, 1,
-                        steps=self.history_length,
-                        device=self.device
-                    )
+                    x_batch = x_batch.to(self.device, non_blocking=non_blocking)
+                    y_batch = y_batch.to(self.device, non_blocking=non_blocking)
 
                     # Forward pass
                     optimizer.zero_grad()
@@ -831,28 +910,28 @@ class APDTFlowForecaster:
                     loss.backward()
                     optimizer.step()
 
-                    epoch_loss += loss.item() * len(x_batch)
+                    epoch_loss_t += loss.detach() * len(x_batch)
 
-                avg_train_loss = epoch_loss / float(len(train_loader.dataset))  # type: ignore[arg-type]
+                n_seen = len(train_loader.dataset)  # type: ignore[arg-type]
+                avg_train_loss = float(epoch_loss_t.item()) / n_seen
 
                 # Validation if early stopping enabled
                 if self.early_stopping and val_loader is not None:
                     self.model.eval()
-                    val_loss = 0.0
+                    val_loss_t = torch.zeros((), device=self.device)
 
                     with torch.no_grad():
                         for batch_data in val_loader:
                             if has_exog_data:
                                 x_batch, y_batch, exog_x_batch, exog_y_batch = batch_data
-                                exog_x_batch = exog_x_batch.to(self.device)
+                                exog_x_batch = exog_x_batch.to(self.device, non_blocking=non_blocking)
                             else:
                                 x_batch, y_batch = batch_data
                                 exog_x_batch = None
 
-                            x_batch = x_batch.to(self.device)
-                            y_batch = y_batch.to(self.device)
+                            x_batch = x_batch.to(self.device, non_blocking=non_blocking)
+                            y_batch = y_batch.to(self.device, non_blocking=non_blocking)
 
-                            t_span = torch.linspace(0, 1, steps=self.history_length, device=self.device)
                             preds, pred_logvars = self.model(x_batch, t_span, exog=exog_x_batch)
 
                             mse = (preds - y_batch.transpose(1, 2)) ** 2
@@ -863,15 +942,20 @@ class APDTFlowForecaster:
                             else:
                                 loss = mse.mean()
 
-                            val_loss += loss.item() * len(x_batch)
+                            val_loss_t += loss * len(x_batch)
 
-                    avg_val_loss = val_loss / float(len(val_loader.dataset))  # type: ignore[arg-type]
+                    n_val_seen = len(val_loader.dataset)  # type: ignore[arg-type]
+                    avg_val_loss = float(val_loss_t.item()) / n_val_seen
 
                     # Early stopping check
                     if avg_val_loss < best_val_loss:
                         best_val_loss = avg_val_loss
                         epochs_without_improvement = 0
-                        best_model_state = self.model.state_dict().copy()
+                        # Deep copy: state_dict() returns live references
+                        # that the optimizer keeps updating in place.
+                        best_model_state = {
+                            k: v.detach().clone() for k, v in self.model.state_dict().items()
+                        }
                     else:
                         epochs_without_improvement += 1
 
@@ -903,6 +987,11 @@ class APDTFlowForecaster:
                     # fit(..., log_callback=lambda epoch, m: mlflow.log_metrics(m, step=epoch))
                     log_callback(epoch, metrics)
 
+            # Early stopping keeps the best validation weights even when the
+            # patience was never exhausted.
+            if self.early_stopping and best_model_state is not None:
+                self.model.load_state_dict(best_model_state)
+
         else:
             # Other models (transformer, tcn, ensemble) use their own train_model() method
             self.model.train_model(
@@ -917,46 +1006,47 @@ class APDTFlowForecaster:
         if self.verbose:
             logger.info("Training completed!")
 
-        # Create conformal predictor if enabled (only for APDTFlow)
+        # Calibrate the conformal predictor (APDTFlow only; checked up front).
         if self.use_conformal:
-            if self.model_type != 'apdtflow':
-                raise ValueError(
-                    f"Conformal prediction is only supported with model_type='apdtflow'. "
-                    f"Current model_type='{self.model_type}' does not support conformal prediction."
-                )
-
             if self.verbose:
                 logger.info("Calibrating conformal predictor...")
 
-            # Generate calibration predictions
+            # Held-out windows when calibration_split > 0; the legacy
+            # in-sample path iterates the training loader exactly as <= 0.4.
+            calib_loader = (
+                train_loader if in_sample_calibration
+                else DataLoader(calib_part, batch_size=max(self.batch_size, 256),
+                                shuffle=False, pin_memory=pin)
+            )
+
             self.model.eval()
             calib_preds = []
             calib_targets = []
             calib_X_parts = []
             calib_exog_parts = []
 
-            # Create t_span for APDTFlow model
             t_span = torch.linspace(0, 1, steps=self.history_length, device=self.device)
 
+            # Keep results on the device while looping; one transfer at the end.
             with torch.no_grad():
-                for batch_data in train_loader:
+                for batch_data in calib_loader:
                     if has_exog_data:
                         x_batch, y_batch, exog_x_batch, exog_y_batch = batch_data
-                        exog_x_batch = exog_x_batch.to(self.device)
+                        calib_exog_parts.append(exog_x_batch)
+                        exog_x_batch = exog_x_batch.to(self.device, non_blocking=non_blocking)
                     else:
                         x_batch, y_batch = batch_data
                         exog_x_batch = None
 
-                    x_batch = x_batch.to(self.device)
-                    y_batch = y_batch.to(self.device)
+                    calib_X_parts.append(x_batch)
+                    calib_targets.append(y_batch)
+                    x_batch = x_batch.to(self.device, non_blocking=non_blocking)
 
                     preds, _ = self.model(x_batch, t_span, exog=exog_x_batch)
+                    calib_preds.append(preds)
 
-                    calib_preds.append(preds.cpu().numpy())
-                    calib_targets.append(y_batch.cpu().numpy())
-                    calib_X_parts.append(x_batch.cpu())
-                    if exog_x_batch is not None:
-                        calib_exog_parts.append(exog_x_batch.cpu())
+            calib_preds = [torch.cat(calib_preds).cpu().numpy()]
+            calib_targets = [torch.cat(calib_targets).numpy()]
 
             calib_preds_arr = np.concatenate(calib_preds, axis=0)
             calib_targets_arr = np.concatenate(calib_targets, axis=0)
@@ -1163,20 +1253,35 @@ class APDTFlowForecaster:
             )
 
     def _offsets_from_timestamps(self, timestamps) -> np.ndarray:
-        """Convert timestamps (or floats) to positive step offsets."""
+        """Convert timestamps and/or float step offsets to positive offsets.
+
+        Accepts a scalar, an array of numbers (step offsets), datetime-like
+        values (when fitted with a ``date_col``), or a list mixing both, e.g.
+        ``['2026-06-14 14:37', 3.6]``.
+        """
+        if np.isscalar(timestamps) or isinstance(timestamps, (pd.Timestamp, np.datetime64)):
+            timestamps = [timestamps]
         arr = np.asarray(timestamps)
         if arr.dtype.kind in 'fiu':
             offsets = arr.astype(float).reshape(-1)
         else:
-            if self.last_date_ is None or self.freq_delta_ is None:
-                raise ValueError(
-                    "Datetime timestamps require the model to be fitted with a "
-                    "date_col; otherwise pass float step offsets."
-                )
-            ts = pd.to_datetime(
-                pd.Series(np.asarray(timestamps).reshape(-1)), format='mixed'
-            )
-            offsets = ((ts - self.last_date_) / self.freq_delta_).to_numpy(dtype=float)
+            if isinstance(timestamps, np.ndarray) and arr.dtype.kind != 'O':
+                items = list(pd.to_datetime(arr.reshape(-1)))
+            else:
+                items = list(timestamps)
+            offsets_list = []
+            for item in items:
+                if isinstance(item, (int, float, np.integer, np.floating)) and not isinstance(item, bool):
+                    offsets_list.append(float(item))
+                    continue
+                if self.last_date_ is None or self.freq_delta_ is None:
+                    raise ValueError(
+                        "Datetime timestamps require the model to be fitted with a "
+                        "date_col; otherwise pass float step offsets."
+                    )
+                ts = pd.Timestamp(item)
+                offsets_list.append(float((ts - self.last_date_) / self.freq_delta_))
+            offsets = np.asarray(offsets_list, dtype=float)
         if (offsets <= 0).any():
             raise ValueError(
                 "All query times must be strictly after the end of the fitted "
@@ -2259,6 +2364,17 @@ class APDTFlowForecaster:
         if self.verbose:
             logger.info("TorchScript model exported to %s", filepath)
 
+    def to(self, device: DeviceLike):
+        """Move the forecaster (fitted or not) to another device.
+
+        Example: train on a GPU, then ``model.to('cpu')`` before serving on a
+        CPU-only host. Returns ``self``.
+        """
+        self.device = resolve_device(device)
+        if self.model is not None:
+            self.model.to(self.device)
+        return self
+
     def save(self, filepath: str):
         """
         Save the fitted model to disk.
@@ -2273,7 +2389,6 @@ class APDTFlowForecaster:
         >>> model.fit(df, target_col='sales')
         >>> model.save('forecaster.pkl')
         """
-        import pickle
 
         if not self._is_fitted:
             raise RuntimeError("Cannot save unfitted model. Call fit() first.")
@@ -2318,7 +2433,11 @@ class APDTFlowForecaster:
             'calibration_split': self.calibration_split,
 
             # Fitted state
-            'model_state_dict': self.model.state_dict() if self.model else None,
+            # Stored on CPU so that a model trained on a GPU loads anywhere.
+            'model_state_dict': (
+                {k: v.detach().cpu() for k, v in self.model.state_dict().items()}
+                if self.model else None
+            ),
             'scaler_mean': self.scaler_mean_,
             'scaler_std': self.scaler_std_,
             'last_sequence': self.last_sequence_,
@@ -2367,7 +2486,7 @@ class APDTFlowForecaster:
             logger.info(f"Model saved to {filepath}")
 
     @classmethod
-    def load(cls, filepath: str, device: Optional[str] = None):
+    def load(cls, filepath: str, device: DeviceLike = 'auto'):
         """
         Load a fitted model from disk.
 
@@ -2375,8 +2494,9 @@ class APDTFlowForecaster:
         ----------
         filepath : str
             Path to the saved model file
-        device : str, optional
-            Device to load model to ('cpu' or 'cuda')
+        device : {'auto', 'cuda', 'mps', 'cpu'} or torch.device, default='auto'
+            Device to load the model onto, independent of the device it was
+            trained on (checkpoints are stored on CPU).
 
         Returns
         -------
@@ -2388,11 +2508,12 @@ class APDTFlowForecaster:
         >>> model = APDTFlowForecaster.load('forecaster.pkl')
         >>> predictions = model.predict()
         """
-        import pickle
         import warnings
 
         with open(filepath, 'rb') as f:
-            state = pickle.load(f)
+            # Map any tensors to CPU first (checkpoints written by apdtflow
+            # <= 0.4 from a GPU model hold CUDA tensors), then move to device.
+            state = _CPUUnpickler(f).load()
 
         saved_version = state.get('apdtflow_version')
         if saved_version is None:

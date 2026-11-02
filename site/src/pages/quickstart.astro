@@ -4,7 +4,7 @@ import PageHeader from '../components/PageHeader.astro';
 import InstallCommand from '../components/InstallCommand.astro';
 import CodeBlock from '../components/CodeBlock.astro';
 import Button from '../components/Button.astro';
-import { site, url } from '../data/site';
+import { site, url, docs } from '../data/site';
 
 const sixtySecond = `from apdtflow import APDTFlowForecaster
 
@@ -19,6 +19,21 @@ result = model.predict_when(threshold=1.4,            # WHEN it crosses the line
 result.eta, result.act_by, result.censored
 schedule = model.predict_when_fleet(assets,           # whole fleet -> ranked schedule
                                     threshold=1.4, direction='below')`;
+const runnable = `import pandas as pd
+from apdtflow import APDTFlowForecaster
+
+url = ("https://raw.githubusercontent.com/yotambraun/APDTFlow/main/"
+       "dataset_examples/daily-minimum-temperatures-in-me_clean.csv")
+df = pd.read_csv(url, parse_dates=["Date"])
+
+model = APDTFlowForecaster(forecast_horizon=14, history_length=30, num_epochs=5,
+                           decoder_type="continuous", use_conformal=True)
+model.fit(df, target_col="Daily minimum temperatures", date_col="Date")
+
+print(model.predict())                          # next 14 days
+print(model.predict_at(["1991-01-01 14:37", 3.6]))  # any moment: timestamp or step offset
+r = model.predict_when(threshold=13.0, direction="below", alpha=0.1)
+print(r.eta, r.earliest, r.latest, r.act_by, r.censored)  # schedule by act_by`;
 ---
 
 <BaseLayout
@@ -48,7 +63,17 @@ schedule = model.predict_when_fleet(assets,           # whole fleet -> ranked sc
       <CodeBlock code={sixtySecond} />
     </div>
 
-    <div class="mt-10 grid gap-5 sm:grid-cols-3">
+    <h2 class="mt-12 text-2xl font-bold tracking-tight">Run it now</h2>
+    <p class="mt-2 max-w-2xl text-muted">
+      Real data, about a minute on a laptop CPU. <code class="font-mono text-cyan">device='auto'</code>
+      (the default) uses a CUDA GPU or Apple MPS when present;
+      <a href={docs.gpu} class="text-cyan hover:underline">when a GPU actually helps</a>.
+    </p>
+    <div class="max-w-3xl">
+      <CodeBlock code={runnable} />
+    </div>
+
+    <div class="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-3">
       <div class="card p-5">
         <code class="font-mono text-sm text-cyan">predict()</code>
         <p class="mt-2 text-sm text-muted">Next k values on the grid, with optional conformal intervals.</p>

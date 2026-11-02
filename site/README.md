@@ -5,7 +5,7 @@ and Tailwind CSS and deployed to GitHub Pages at
 **https://yotambraun.github.io/APDTFlow/**.
 
 This directory is completely separate from the Python package: it is never
-included in the wheel/sdist (packaging uses `find_packages()`), and `ci.yml`
+included in the wheel (`pyproject.toml` packages only `apdtflow*`), and `ci.yml`
 ignores `site/**`, so changes here never touch PyPI or run the Python test suite.
 
 ## Develop

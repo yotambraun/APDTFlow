@@ -20,9 +20,10 @@ function cls(col: 'apdtflow' | 'linear' | 'persistence', winner: string) {
       </h2>
       <p class="mt-4 text-lg text-muted">
         Event-timing audits on real held-out hardware. Lower is better (timing MAE in
-        cycles). APDTFlow wins the battery and FD001 audits outright, and
-        <span class="text-ink">loses to a linear baseline on FD002</span> — shown here,
-        not buried.
+        cycles). In these single-seed June runs APDTFlow won the battery and FD001 audits
+        and <span class="text-ink">lost to a linear baseline on FD002</span>. A November
+        4-seed re-run of the battery audit put it <span class="text-ink">on par with
+        linear</span> (mean 10.0 vs 9.7): shown here, not buried.
       </p>
     </div>
 
@@ -65,7 +66,7 @@ function cls(col: 'apdtflow' | 'linear' | 'persistence', winner: string) {
       }
     </div>
 
-    <div class="mt-12 grid gap-6 lg:grid-cols-[1.2fr_1fr] lg:items-center">
+    <div class="mt-12 grid grid-cols-1 gap-6 lg:grid-cols-[1.2fr_1fr] lg:items-center">
       <figure class="card overflow-hidden">
         <img src={img('apdtflow_trust_panel.png')} alt="Trust panel showing the point-estimate bias and how to schedule around it" loading="lazy" class="w-full" />
       </figure>
@@ -84,7 +85,10 @@ function cls(col: 'apdtflow' | 'linear' | 'persistence', winner: string) {
           Full benchmarks and reproduce commands →
         </a>
         <p class="mt-2 text-xs text-muted">
-          Source of truth: <a href={docs.experiments} class="hover:text-ink">docs/experiment_results.md</a>
+          Source of truth, with per-seed tables: <a href={docs.experiments} class="hover:text-ink">docs/experiment_results.md</a>.
+          Measured with v0.4.0, which calibrated on the training windows; since v0.5.0
+          calibration windows are held out by default, and the audit scripts pin the
+          v0.4.0 protocol.
         </p>
       </div>
     </div>

@@ -14,7 +14,7 @@ export const img = (name: string): string => url(`images/${name}`);
 export const site = {
   name: 'APDTFlow',
   tagline: 'know WHEN it will happen',
-  version: '0.4.0',
+  version: '0.5.0',
   license: 'MIT',
   author: 'Yotam Braun',
   description:
@@ -34,6 +34,7 @@ export const docs = {
   experiments: `${site.repo}/blob/main/docs/experiment_results.md`,
   guide: `${site.repo}/blob/main/docs/index.md`,
   features: `${site.repo}/blob/main/docs/features.md`,
+  gpu: `${site.repo}/blob/main/docs/gpu_and_performance.md`,
   changelog: `${site.repo}/blob/main/CHANGELOG.md`,
 };
 
@@ -85,7 +86,7 @@ export const questions = [
 export const evidenceRows = [
   {
     audit: 'Battery end-of-life',
-    detail: '3 cells, leave-one-battery-out',
+    detail: '3 cells, leave-one-battery-out; June, one seed (4-seed re-run: on par with linear)',
     apdtflow: '8.3',
     linear: '9.7',
     persistence: '15.4',
@@ -112,7 +113,8 @@ export const evidenceRows = [
 export const evidenceChips = [
   '0 false alarms across 2,638 no-crossing windows',
   'coverage 96 / 40 / 54 vs a 90% target',
-  'every number reproducible from experiments/',
+  'battery re-run, 4 seeds: on par with linear',
+  'a script in experiments/ for every number',
 ];
 
 // Grid-accuracy benchmark (README) — MAE relative to seasonal-naive (<1.0 beats it).
@@ -124,6 +126,17 @@ export const gridRows = [
   { dataset: 'Electric production (real, 397 pts)', apdtflow: '1.52', linear: '1.03', hw: '1.23', winner: 'linear' as const },
   { dataset: 'Random walk (unpredictable)', apdtflow: '1.86', linear: '1.15', hw: '1.12', winner: 'linear' as const },
 ];
+
+// CPU vs GPU training speed (docs/gpu_and_performance.md) — measured 2026-11-02
+// with benchmarks/benchmark_device.py; seconds per epoch, median of 15 epochs.
+export const perfRows = [
+  { config: 'Default-size model (hidden 16, batch 32)', cpu: '3.6 s', gpu: '7.5 s', winner: 'cpu' as const, verdict: 'CPU, 2.1x' },
+  { config: 'Continuous decoder (hidden 64, batch 64)', cpu: '19.3 s', gpu: '27.6 s', winner: 'cpu' as const, verdict: 'CPU, 1.4x' },
+  { config: 'NASA battery, 66 windows (hidden 16)', cpu: '0.65 s', gpu: '1.75 s', winner: 'cpu' as const, verdict: 'CPU, 2.7x' },
+  { config: 'Large model (hidden 128, batch 256)', cpu: '35.3 s', gpu: '15.6 s', winner: 'gpu' as const, verdict: 'GPU, 2.3x' },
+];
+export const perfHardware =
+  'Intel Core i7-12700H vs NVIDIA RTX 3050 Ti Laptop GPU (4 GB), WSL2, PyTorch 2.14.1, apdtflow 0.5.0.';
 
 // Capability matrix (README) — capabilities, not accuracy.
 export const capabilities = [
@@ -286,7 +299,7 @@ schedule.to_csv('maintenance_schedule.csv')`,
         name: 'Conformal intervals',
         value: 'Split and adaptive conformal calibration on every forecast.',
         description:
-          'Conformal prediction wraps a point forecast in an interval whose coverage you can verify on held-out data — split conformal is fast, adaptive adjusts as the distribution shifts. Switch it on at construction and predict() can hand back calibrated lower/upper bands.',
+          'Conformal prediction wraps a point forecast in an interval whose coverage you can verify on held-out data — split conformal is fast, adaptive adjusts as the distribution shifts. The most recent 20% of training windows (calibration_split) is held out of training and used only for calibration. Switch it on at construction and predict() can hand back calibrated lower/upper bands.',
         api: "APDTFlowForecaster(use_conformal=True, conformal_method='adaptive')",
         snippet: `model = APDTFlowForecaster(use_conformal=True, conformal_method='split')
 model.fit(df, target_col='y')
@@ -321,9 +334,9 @@ model.sensor_importance_      # learned weight per input channel`,
       },
       {
         name: 'Exogenous variables',
-        value: 'Bring known drivers (promotions, weather) with concat / gated / attention fusion.',
+        value: 'Bring outside drivers (promotions, weather) with concat / gated / attention fusion.',
         description:
-          'Add outside drivers that move the series — promotions, weather, price. Choose how they combine with the signal (concat, gated, or attention), and pass future_exog_cols for drivers whose future values you will know at forecast time.',
+          'Add outside drivers that move the series — promotions, weather, price — and choose how they combine with the signal (concat, gated, or attention). The model uses them over its input window; future-known values (exog_future) do not change the forecast yet, and modelling them is on the roadmap.',
         api: 'fit(..., exog_cols=[...], future_exog_cols=[...])',
         snippet: `model = APDTFlowForecaster(exog_fusion_type='gated')
 model.fit(df, target_col='sales', exog_cols=['promo'], future_exog_cols=['promo'])
@@ -399,8 +412,8 @@ s['coverage']      # vs expected coverage — recalibrate if it drops`,
         name: 'Persistence',
         value: 'Save and load the model with its scalers and conformal calibration intact.',
         description:
-          'save() / load() round-trip the weights, the fitted scalers, and the conformal calibration together, so a reloaded model forecasts and calibrates exactly as before. Checkpoints record the library version and refuse incompatible ones.',
-        api: "model.save('m.pt'); APDTFlowForecaster.load('m.pt')",
+          'save() / load() round-trip the weights, the fitted scalers, and the conformal calibration together, so a reloaded model forecasts and calibrates exactly as before. Weights are stored on CPU, so a model trained on a GPU loads on any machine. Checkpoints record the library version and refuse incompatible ones.',
+        api: "model.save('m.pt'); APDTFlowForecaster.load('m.pt', device='auto')",
       },
       {
         name: 'TorchScript export',
@@ -417,6 +430,14 @@ s['coverage']      # vs expected coverage — recalibrate if it drops`,
         api: 'uvicorn serve_api:app',
         example: 'serve_api.py',
         exampleLabel: 'serve_api.py',
+      },
+      {
+        name: 'GPU & device selection',
+        value: "device='auto' picks CUDA, then Apple MPS, then CPU; move a fitted model with .to().",
+        description:
+          'Training, conformal calibration, predict, predict_at, predict_when and fleet scoring all run on the selected device, and checkpoints are stored on CPU so a GPU-trained model loads anywhere. Measured on a laptop: the default-size model trains faster on CPU; the GPU pays off for larger models and batches.',
+        api: "APDTFlowForecaster(device='auto'); model.to('cpu')",
+        note: 'Benchmark table, hardware and when a GPU helps: docs/gpu_and_performance.md.',
       },
       {
         name: 'Reproducible runs',
@@ -451,7 +472,7 @@ s['coverage']      # vs expected coverage — recalibrate if it drops`,
         value: 'Train and forecast straight from the terminal.',
         description:
           'apdtflow train and apdtflow infer cover CSV-in / forecast-out workflows without writing any Python.',
-        api: 'apdtflow train --csv_file data.csv --value_col y',
+        api: 'apdtflow train --csv_file data.csv --value_col y --device auto',
       },
     ],
   },

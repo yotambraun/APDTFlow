@@ -106,7 +106,8 @@ def load_cells() -> dict:
 
 
 # ----------------------------------------------------------------- model
-def fit_fold(train_series: list, epochs: int) -> APDTFlowForecaster:
+def fit_fold(train_series: list, epochs: int,
+             calibration_split: float = 0.0) -> APDTFlowForecaster:
     """Fit one LOBO fold on the concatenated training cells' SOH series."""
     df = pd.DataFrame({"capacity": np.concatenate(train_series)})
     forecaster = APDTFlowForecaster(
@@ -119,9 +120,10 @@ def fit_fold(train_series: list, epochs: int) -> APDTFlowForecaster:
         learning_rate=1e-3,
         decoder_type="continuous",
         use_conformal=True,
-        # In-sample calibration: the protocol behind the published 0.4.0 numbers
-        # (apdtflow >= 0.5 holds out the last 20% of windows by default).
-        calibration_split=0.0,
+        # Default 0.0, in-sample calibration: the protocol behind the published
+        # 0.4.0 numbers. apdtflow >= 0.5 holds out the last 20% of windows by
+        # default; --calibration-split 0.2 audits that protocol.
+        calibration_split=calibration_split,
         verbose=False,
     )
     forecaster.fit(df, target_col="capacity")
@@ -353,6 +355,10 @@ def main() -> None:
                         help="audit window stride on the held-out cell (default 1)")
     parser.add_argument("--seed", type=int, default=SEED,
                         help=f"random seed (default {SEED}, the published run)")
+    parser.add_argument("--calibration-split", type=float, default=0.0,
+                        help="share of the most recent training windows held out for "
+                             "calibration (default 0.0, the published protocol; "
+                             "0.2 is the apdtflow 0.5 default)")
     parser.add_argument("--out-dir", default=None,
                         help="write the JSON and plots here instead of "
                              "experiments/results and assets/images (for seed sweeps)")
@@ -379,7 +385,8 @@ def main() -> None:
     for held_out in CELLS:
         train_cells = [c for c in CELLS if c != held_out]
         print(f"\n[fold] held-out {held_out} <- train on {'+'.join(train_cells)}")
-        forecaster = fit_fold([cells[c]["soh"] for c in train_cells], args.epochs)
+        forecaster = fit_fold([cells[c]["soh"] for c in train_cells], args.epochs,
+                              args.calibration_split)
         thr_soh = THRESHOLD / cells[held_out]["cap0"]
         lo, hi, n_cal = forecaster._crossing_calibration(thr_soh, DIRECTION, ALPHA)
         records = audit_cell(forecaster, cells[held_out]["soh"], args.stride, thr_soh)
@@ -441,6 +448,7 @@ def main() -> None:
             "threshold_ah": THRESHOLD, "direction": DIRECTION,
             "history": HISTORY, "horizon": HORIZON, "alpha": ALPHA,
             "epochs": args.epochs, "stride": args.stride, "seed": seed,
+            "calibration_split": args.calibration_split,
             "units": "measured cycles (rows); chronological cycles = "
                      "measured * median cycle spacing",
             "median_cycle_spacing": spacing,

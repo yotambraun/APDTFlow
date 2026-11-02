@@ -273,6 +273,11 @@ def test_calibration_split_holds_out_recent_windows():
                                rtol=1e-5, atol=1e-5)
 
 
+def test_calibration_is_in_sample_by_default():
+    # The protocol of every published audit; held-out calibration is opt-in.
+    assert APDTFlowForecaster().calibration_split == 0.0
+
+
 def test_calibration_split_zero_is_in_sample():
     n, hist, hor = 200, 20, 5
     model = APDTFlowForecaster(forecast_horizon=hor, history_length=hist, num_epochs=1,

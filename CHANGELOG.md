@@ -7,22 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.5.0] - Unreleased
 
-GPU and device support done properly, honest held-out conformal calibration,
-and a single modern packaging setup.
+GPU and device support done properly (including CUDA-graph training), a working
+`calibration_split`, and a single modern packaging setup.
 
 ### Changed — behaviour (read before upgrading)
-- **`calibration_split` now works** (it was documented as "fraction of data held
-  for calibration" but was silently ignored: conformal intervals and
-  `predict_when` time windows were calibrated on the very windows the model had
-  trained on, which makes them optimistic). With `use_conformal=True` the most
-  recent `calibration_split` fraction of windows (default `0.2`) is now held out
-  of training and used only for calibration, with a purge gap of
-  `forecast_horizon - 1` windows so no training target overlaps a calibration
-  target. Expect wider, more honest intervals and windows, and a model trained on
-  ~80% of the windows. `calibration_split=0.0` restores the 0.4 behaviour (the
-  experiment scripts behind the published 0.4.0 numbers pass it, so they keep
-  measuring the same protocol). If the data is too short to hold out calibration
-  windows, `fit` warns and falls back to in-sample calibration.
+- **`calibration_split` now works.** It was documented as "fraction of data held for
+  calibration" but silently ignored. With `use_conformal=True` and
+  `calibration_split > 0`, the most recent fraction of windows is held out of training
+  and used only for calibration, after a purge gap of `forecast_horizon - 1` windows so
+  no training target overlaps a calibration target. **The default is now `0.0`**:
+  calibrate on the training windows, as every release so far has, because holding the
+  most recent windows out measured worse where it matters. On the NASA battery fleet
+  audit the held-out 20% is the tail of one battery, about 10 crossings, and the 90%
+  windows covered 10% of the held-out crossings against 83% in-sample (8 and 10
+  seeds); on a single series (sunspots, 3 seeds) the two were even (54% vs 51%).
+  Neither reaches 90% on these audits (docs/METHODOLOGY.md). If the data is too short
+  to hold out calibration windows, `fit` warns and falls back to in-sample
+  calibration.
 - `device` now defaults to `"auto"`, which picks **CUDA, then Apple MPS, then
   CPU** (0.4 picked CUDA or CPU). Requesting an unavailable backend
   (`device="cuda"` without a CUDA build of PyTorch, `device="mps"` off Apple

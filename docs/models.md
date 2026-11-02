@@ -222,7 +222,7 @@ high-level API — use the module-level class directly.
 | `exog_fusion_type` | `'gated'` | `'concat'`, `'gated'`, or `'attention'` |
 | `use_conformal` | `False` | Calibrate conformal intervals during `fit` (required for `predict_when`) |
 | `conformal_method` | `'split'` | `'split'` or `'adaptive'` |
-| `calibration_split` | `0.2` | Fraction of the most recent training windows held out of training for conformal calibration (`0.0` = calibrate on the training windows, optimistic) |
+| `calibration_split` | `0.0` | Fraction of the most recent training windows held out of training for conformal calibration; `0.0` calibrates on the training windows (measured trade-off: METHODOLOGY.md) |
 | `early_stopping` | `False` | Stop on stalled validation loss |
 | `patience` | `5` | Early-stopping patience (epochs) |
 | `validation_split` | `0.2` | Validation fraction when early stopping is on |

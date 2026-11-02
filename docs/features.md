@@ -57,9 +57,10 @@ schedule.to_csv('maintenance_schedule.csv')
 ```
 
 **Calibrated uncertainty** — split and adaptive conformal calibration wraps any
-forecast in an interval whose coverage you can verify on held-out data. The most
-recent `calibration_split` (default 20%) of the training windows is held out of
-training and used only for calibration. `predict_when`'s windows are calibrated in
+forecast in an interval whose coverage you can verify on held-out data. By default it
+calibrates on the training windows; `calibration_split` holds the most recent
+windows out of training instead ([METHODOLOGY.md](METHODOLOGY.md) compares the two on
+real data). `predict_when`'s windows are calibrated in
 *time* space (on crossing-time errors), which is what keeps the 90% window honest.
 
 ```python

@@ -120,9 +120,9 @@ def fit_fold(train_series: list, epochs: int,
         learning_rate=1e-3,
         decoder_type="continuous",
         use_conformal=True,
-        # Default 0.0, in-sample calibration: the protocol behind the published
-        # 0.4.0 numbers. apdtflow >= 0.5 holds out the last 20% of windows by
-        # default; --calibration-split 0.2 audits that protocol.
+        # Default 0.0, in-sample calibration: the library default and the
+        # protocol behind the published numbers; --calibration-split 0.2 audits
+        # held-out calibration of the most recent 20% of windows instead.
         calibration_split=calibration_split,
         verbose=False,
     )

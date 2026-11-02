@@ -86,9 +86,9 @@ function cls(col: 'apdtflow' | 'linear' | 'persistence', winner: string) {
         </a>
         <p class="mt-2 text-xs text-muted">
           Source of truth, with per-seed tables: <a href={docs.experiments} class="hover:text-ink">docs/experiment_results.md</a>.
-          Measured with v0.4.0, which calibrated on the training windows; since v0.5.0
-          calibration windows are held out by default, and the audit scripts pin the
-          v0.4.0 protocol.
+          Windows are calibrated on the training windows, the library default; holding
+          the most recent windows out instead is an option, and measured worse on these
+          audits (docs/METHODOLOGY.md).
         </p>
       </div>
     </div>

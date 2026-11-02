@@ -133,7 +133,7 @@ class APDTFlowForecaster:
         # NEW: Conformal prediction support
         use_conformal: bool = False,
         conformal_method: str = 'split',
-        calibration_split: float = 0.2,
+        calibration_split: float = 0.0,
         # NEW: Early stopping
         early_stopping: bool = False,
         patience: int = 5,
@@ -582,13 +582,16 @@ class APDTFlowForecaster:
     def _calibration_split(self, dataset):
         """Split training windows from held-out conformal calibration windows.
 
-        Returns ``(train_part, calib_part, in_sample)``. With
-        ``use_conformal=True`` and ``calibration_split > 0``, the most recent
-        ``calibration_split`` fraction of windows is held out for calibration.
-        A purge gap of ``forecast_horizon - 1`` windows is dropped between the
-        two parts so that no training target overlaps a calibration target.
-        ``calibration_split=0`` reproduces the pre-0.5 behaviour (calibration
-        on the training windows; intervals are then optimistic).
+        Returns ``(train_part, calib_part, in_sample)``. The default,
+        ``calibration_split=0``, calibrates on the training windows: the
+        protocol behind every published audit. Its intervals are optimistic in
+        theory, but holding out the most recent windows measured worse in our
+        audits (docs/METHODOLOGY.md): one recent stretch of a series, or the
+        last unit of a concatenated fleet, is a small and unrepresentative
+        calibration sample. With ``calibration_split > 0`` that most recent
+        fraction of windows is held out of training, after a purge gap of
+        ``forecast_horizon - 1`` windows so that no training target overlaps a
+        calibration target.
         """
         if not self.use_conformal:
             return dataset, None, False
@@ -835,8 +838,8 @@ class APDTFlowForecaster:
         else:
             dataset = TensorDataset(X, y)
 
-        # Held-out conformal calibration (v0.5.0): the last calibration_split
-        # of windows is reserved for calibration and never trained on.
+        # Conformal calibration windows: the training windows by default, or
+        # the most recent calibration_split of windows, never trained on.
         train_part, calib_part, in_sample_calibration = self._calibration_split(dataset)
 
         # Pinned host memory lets batches copy to the GPU asynchronously.
@@ -1041,7 +1044,7 @@ class APDTFlowForecaster:
             if self.verbose:
                 logger.info("Calibrating conformal predictor...")
 
-            # Held-out windows when calibration_split > 0; the legacy
+            # Held-out windows when calibration_split > 0; the default
             # in-sample path iterates the training loader exactly as <= 0.4.
             calib_loader = (
                 train_loader if in_sample_calibration

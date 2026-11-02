@@ -131,15 +131,14 @@ Fit with `use_conformal=True` to calibrate distribution-free prediction interval
 lower, preds, upper = model.predict(return_intervals="conformal", alpha=0.05)
 ```
 
-**Calibration data is held out.** With `use_conformal=True` the most recent
-`calibration_split` fraction of training windows (default `0.2`) is never trained on;
-those windows calibrate the value intervals and the `predict_when` time windows. A
-purge gap of `forecast_horizon - 1` windows separates the two parts so no training
-target overlaps a calibration target. `calibration_split=0.0` calibrates on the
-training windows themselves (the only behaviour before 0.5.0): intervals are then
-optimistic, because a model's errors on data it has fit are smaller than on new
-data. If the series is too short to hold out windows, `fit` warns and falls back to
-in-sample calibration.
+**Which windows calibrate.** By default, conformal intervals and `predict_when` time
+windows are calibrated on the training windows. `calibration_split=0.2` holds the most
+recent 20% of windows out of training instead, with a purge gap of
+`forecast_horizon - 1` windows so no training target overlaps a calibration target.
+That is the textbook choice, but on our audits it measured much worse on a fleet
+trained as one concatenated series and no better on a single series:
+[METHODOLOGY.md](METHODOLOGY.md) has the numbers. If the series is too short to hold
+out windows, `fit` warns and falls back to in-sample calibration.
 
 A consequence of the default MSE training objective that we want users to understand:
 the model's raw variance head is untrained under MSE, so every uncertainty band

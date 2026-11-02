@@ -94,15 +94,28 @@ miscalibrates when trajectories are steep or flat. Calibrating directly on
 split — is the method behind every `predict_when` window we publish; its coverage is
 unit-tested at >= 85% on the held-out sunspots fixture.
 
-**Held-out calibration windows (since 0.5.0).** Split conformal's coverage argument
-needs calibration residuals the model was not fitted on. Through 0.4.x the
-calibration split was in fact the training windows, so residuals were in-sample and
-intervals optimistic. Since 0.5.0 the most recent `calibration_split` fraction of
-windows (default 20%) is held out of training, separated from the training windows by
-a purge gap of `forecast_horizon − 1` windows so that no training target overlaps a
-calibration target. Using the *most recent* windows also means calibration reflects
-the regime closest to the forecast origin. The published audits (Section 6) were
-measured under the 0.4 protocol and their scripts pin it (`calibration_split=0.0`).
+**Which windows calibrate (measured, not assumed).** Split conformal's coverage
+argument wants calibration residuals the model was not fitted on, which suggests
+holding the most recent windows out of training. `calibration_split` does that, with a
+purge gap of `forecast_horizon − 1` windows so that no training target overlaps a
+calibration target. It is not the default, because it measured worse on our audits
+(same code for both protocols, CPU, November 2026):
+
+| Audit (90% target) | Training windows (default) | Most recent 20% held out |
+|---|---|---|
+| NASA battery fleet: B0005 window coverage (10 and 8 seeds) | 83% | 10% |
+| NASA battery fleet: pooled timing MAE, cycles | 10.4 | 11.6 |
+| Sunspots, single series: window coverage (3 seeds) | 51% | 54% |
+
+A fleet trained as one concatenated series puts the last unit at the end, so its most
+recent 20% is that unit's tail: here one battery with about 10 crossings to calibrate
+on (the training windows offer about 120), and the model also loses that battery's
+end-of-life region from training. On a single series the two protocols were even.
+Neither reaches 90% on these audits, so read the windows as calibrated to the
+training data, not as guaranteed coverage on new units. The principled fix for fleets
+is calibrating on held-out units (cross-conformal by unit); it is planned, not
+shipped. Reproduce with `--calibration-split` on `experiments/battery_eol_demo.py` and
+`experiments/audit_predict_when.py`.
 
 **Asymmetric windows.** Crossing-time errors are systematically signed (Section 5), so
 we calibrate the 5th and 95th percentiles of *signed* errors rather than a symmetric

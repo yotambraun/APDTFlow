@@ -149,11 +149,11 @@ def main():
     parser.add_argument("--season", type=int, default=None,
                         help="seasonal period for the seasonal-naive baseline "
                              "(omit for non-seasonal series)")
-    parser.add_argument("--calibration-split", type=float, default=0.2,
-                        help="fraction of the training windows held out for the "
-                             "time-window calibration (apdtflow >= 0.5 default 0.2; "
-                             "0.0 = in-sample, the protocol of the committed 0.4.0 "
-                             "sunspots result)")
+    parser.add_argument("--calibration-split", type=float, default=0.0,
+                        help="fraction of the most recent training windows held out "
+                             "for the time-window calibration (default 0.0: calibrate "
+                             "on the training windows, the library default and the "
+                             "protocol of the committed sunspots result)")
     parser.add_argument("--device", default="auto",
                         help="auto | cuda | mps | cpu")
     parser.add_argument("--seed", type=int, default=11)

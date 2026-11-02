@@ -351,10 +351,19 @@ def main() -> None:
                         help="training epochs per LOBO fold (default 60)")
     parser.add_argument("--stride", type=int, default=1,
                         help="audit window stride on the held-out cell (default 1)")
+    parser.add_argument("--seed", type=int, default=SEED,
+                        help=f"random seed (default {SEED}, the published run)")
+    parser.add_argument("--out-dir", default=None,
+                        help="write the JSON and plots here instead of "
+                             "experiments/results and assets/images (for seed sweeps)")
     args = parser.parse_args()
 
-    set_seed(SEED)
-    np.random.seed(SEED)
+    global RESULTS_DIR, IMAGES_DIR
+    if args.out_dir:
+        RESULTS_DIR = IMAGES_DIR = Path(args.out_dir)
+    seed = args.seed
+    set_seed(seed)
+    np.random.seed(seed)
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -431,7 +440,7 @@ def main() -> None:
         "config": {
             "threshold_ah": THRESHOLD, "direction": DIRECTION,
             "history": HISTORY, "horizon": HORIZON, "alpha": ALPHA,
-            "epochs": args.epochs, "stride": args.stride, "seed": SEED,
+            "epochs": args.epochs, "stride": args.stride, "seed": seed,
             "units": "measured cycles (rows); chronological cycles = "
                      "measured * median cycle spacing",
             "median_cycle_spacing": spacing,

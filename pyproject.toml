@@ -1,80 +1,87 @@
 [build-system]
-requires = ["setuptools>=64", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "apdtflow"
-version = "0.4.0"
-description = "APDTFlow: A modular forecasting framework for time series data"
+version = "0.5.0"
+description = "Continuous-time forecasting with Neural ODEs: forecast at any moment and predict WHEN a series will cross a threshold, with calibrated uncertainty."
 authors = [
     { name = "Yotam Barun", email = "yotambarun93@gmail.com" }
 ]
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = [
     "torch",
     "torchdiffeq",
-    "pandas",
     "numpy",
-    "matplotlib",
+    "pandas>=2.0",
     "scipy",
-    "tensorboard",
-    "pyyaml",
     "scikit-learn",
     "statsmodels",
-    "tqdm"
+    "matplotlib",
+    "tqdm",
 ]
-keywords=[
+keywords = [
     "time-series",
     "forecasting",
-    "neural-ode",
-    "deep-learning",
-    "transformer",
-    "tcn",
-    "timeseries-analysis",
     "time-series-forecasting",
+    "neural-ode",
     "neural-differential-equations",
-    "probabilistic-forecasting",
+    "continuous-time",
+    "event-time-forecasting",
+    "remaining-useful-life",
+    "predictive-maintenance",
+    "conformal-prediction",
     "uncertainty-quantification",
-    "multi-scale-decomposition",
+    "probabilistic-forecasting",
+    "deep-learning",
     "pytorch",
-    "machine-learning"
+    "gpu",
 ]
-classifiers=[
-        "Development Status :: 4 - Beta",
-        "Intended Audience :: Science/Research",
-        "Intended Audience :: Developers",
-        "Topic :: Scientific/Engineering :: Artificial Intelligence",
-        "Topic :: Scientific/Engineering :: Information Analysis",
-        "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "Programming Language :: Python :: 3.12",
-        "Operating System :: OS Independent",
-        "License :: OSI Approved :: MIT License",
-    ]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: OS Independent",
+    "Typing :: Typed",
+]
 
 [project.optional-dependencies]
 mlflow = ["mlflow"]
 wandb = ["wandb"]
 serve = ["fastapi", "uvicorn"]
+tensorboard = ["tensorboard"]
 dev = ["pytest", "pytest-cov", "flake8", "mypy", "build", "twine"]
 
 [project.urls]
 Homepage = "https://yotambraun.github.io/APDTFlow/"
-Documentation = "https://yotambraun.github.io/APDTFlow/"
+Documentation = "https://github.com/yotambraun/APDTFlow/blob/main/docs/index.md"
 Source = "https://github.com/yotambraun/APDTFlow"
-
-[tool.pytest.ini_options]
-addopts = "--cov=apdtflow --cov-report=xml"
-markers = [
-    "slow: long-running training tests (run in CI on push to main)",
-]
+Changelog = "https://github.com/yotambraun/APDTFlow/blob/main/CHANGELOG.md"
+Issues = "https://github.com/yotambraun/APDTFlow/issues"
 
 [project.scripts]
 apdtflow = "apdtflow.cli:main"
 
+[tool.setuptools.packages.find]
+include = ["apdtflow*"]
+
 [tool.setuptools.package-data]
 apdtflow = ["py.typed", "config/*.yaml"]
 
+[tool.pytest.ini_options]
+markers = [
+    "slow: long-running training tests (run in CI on push to main)",
+]

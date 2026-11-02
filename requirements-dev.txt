@@ -1,8 +1,0 @@
-# Development and benchmark dependencies
-pytest
-pytest-cov
-flake8
-mypy
-build
-twine
-statsmodels

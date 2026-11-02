@@ -1,0 +1,398 @@
+{
+  "hardware": {
+    "python": "3.12.12",
+    "platform": "Linux-5.15.133.1-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+    "processor": "x86_64",
+    "cpu_count": 20,
+    "torch": "2.14.1+cu126",
+    "torch_cuda": "12.6",
+    "torch_threads": 10,
+    "apdtflow": "0.5.0",
+    "cpu_model": "12th Gen Intel(R) Core(TM) i7-12700H",
+    "gpu": "NVIDIA GeForce RTX 3050 Ti Laptop GPU",
+    "gpu_memory_mb": 4095
+  },
+  "args": {
+    "devices": [
+      "cpu",
+      "cuda"
+    ],
+    "configs": [
+      "small",
+      "medium",
+      "battery",
+      "large-batch"
+    ],
+    "epochs": 6,
+    "repeats": 3,
+    "calls": 30,
+    "calibration_split": null,
+    "out": "benchmarks/results/device_benchmark.json"
+  },
+  "results": [
+    {
+      "config": "small",
+      "description": "daily min temperature (3,647 pts), hidden_dim=16, history=30, horizon=7, batch=32, transformer decoder",
+      "device": "cpu",
+      "epochs_per_fit": 6,
+      "repeats": 3,
+      "epoch_seconds": {
+        "median": 3.589108214000589,
+        "min": 3.320668537999154,
+        "max": 3.760926686001767,
+        "n": 15
+      },
+      "first_epoch_seconds": {
+        "median": 3.681894130000728,
+        "min": 3.5097419890007586,
+        "max": 5.567295353997906,
+        "n": 3
+      },
+      "latency_ms": {
+        "predict": {
+          "median": 8.245990498835454,
+          "min": 5.1865569985238835,
+          "max": 14.42692199634621,
+          "n": 90
+        }
+      }
+    },
+    {
+      "config": "small",
+      "description": "daily min temperature (3,647 pts), hidden_dim=16, history=30, horizon=7, batch=32, transformer decoder",
+      "device": "cuda",
+      "epochs_per_fit": 6,
+      "repeats": 3,
+      "epoch_seconds": {
+        "median": 7.524881605000701,
+        "min": 7.09901714699663,
+        "max": 8.030201271998521,
+        "n": 15
+      },
+      "first_epoch_seconds": {
+        "median": 8.655683531003888,
+        "min": 7.3541708560005645,
+        "max": 8.758084959998087,
+        "n": 3
+      },
+      "latency_ms": {
+        "predict": {
+          "median": 29.197792999184458,
+          "min": 24.360973002330866,
+          "max": 57.69031000090763,
+          "n": 90
+        }
+      },
+      "peak_gpu_memory_mb": 28.130859375
+    },
+    {
+      "config": "medium",
+      "description": "daily min temperature (3,647 pts), hidden_dim=64, history=60, horizon=14, batch=64, continuous decoder + conformal",
+      "device": "cpu",
+      "epochs_per_fit": 6,
+      "repeats": 3,
+      "epoch_seconds": {
+        "median": 19.313876619999064,
+        "min": 18.78898998099612,
+        "max": 21.745986392001214,
+        "n": 15
+      },
+      "first_epoch_seconds": {
+        "median": 19.017987224004173,
+        "min": 18.886123103999125,
+        "max": 19.310384701995645,
+        "n": 3
+      },
+      "latency_ms": {
+        "predict": {
+          "median": 26.842501498322235,
+          "min": 18.557856004917994,
+          "max": 37.014470995927695,
+          "n": 90
+        },
+        "predict_at_100": {
+          "median": 26.61758950125659,
+          "min": 20.15606200438924,
+          "max": 39.28582099615596,
+          "n": 90
+        },
+        "predict_when_first_call": {
+          "median": 33.1228579962044,
+          "min": 23.83363200351596,
+          "max": 37.839447999431286,
+          "n": 3
+        },
+        "predict_when_cached": {
+          "median": 27.14341449609492,
+          "min": 19.303368993860204,
+          "max": 42.1612029967946,
+          "n": 90
+        },
+        "predict_when_fleet_256": {
+          "median": 151.53352150082355,
+          "min": 139.3458809980075,
+          "max": 218.4496970003238,
+          "n": 18
+        }
+      }
+    },
+    {
+      "config": "medium",
+      "description": "daily min temperature (3,647 pts), hidden_dim=64, history=60, horizon=14, batch=64, continuous decoder + conformal",
+      "device": "cuda",
+      "epochs_per_fit": 6,
+      "repeats": 3,
+      "epoch_seconds": {
+        "median": 27.57427866499347,
+        "min": 24.838046654003847,
+        "max": 30.387666788999923,
+        "n": 15
+      },
+      "first_epoch_seconds": {
+        "median": 27.104186882999784,
+        "min": 25.78393583700381,
+        "max": 28.384119326001382,
+        "n": 3
+      },
+      "latency_ms": {
+        "predict": {
+          "median": 99.99531749781454,
+          "min": 78.32187299936777,
+          "max": 159.47831499943277,
+          "n": 90
+        },
+        "predict_at_100": {
+          "median": 103.56096899704426,
+          "min": 70.77951899555046,
+          "max": 164.44862999924226,
+          "n": 90
+        },
+        "predict_when_first_call": {
+          "median": 99.56176099512959,
+          "min": 96.21547700226074,
+          "max": 100.72870199655881,
+          "n": 3
+        },
+        "predict_when_cached": {
+          "median": 100.17850750227808,
+          "min": 76.7137009970611,
+          "max": 143.47342499968363,
+          "n": 90
+        },
+        "predict_when_fleet_256": {
+          "median": 105.71618449830567,
+          "min": 96.61960700032068,
+          "max": 122.56399900070392,
+          "n": 18
+        }
+      },
+      "peak_gpu_memory_mb": 129.04248046875
+    },
+    {
+      "config": "battery",
+      "description": "NASA battery B0005 capacity (168 cycles), hidden_dim=16, history=20, horizon=30, batch=32, continuous decoder + conformal",
+      "device": "cpu",
+      "epochs_per_fit": 6,
+      "repeats": 3,
+      "epoch_seconds": {
+        "median": 0.6449463089957135,
+        "min": 0.5904129569971701,
+        "max": 0.7098047390027205,
+        "n": 15
+      },
+      "first_epoch_seconds": {
+        "median": 0.6417463540055905,
+        "min": 0.585192366001138,
+        "max": 0.6650660070008598,
+        "n": 3
+      },
+      "latency_ms": {
+        "predict": {
+          "median": 27.095411001937464,
+          "min": 19.008227995072957,
+          "max": 51.4999219958554,
+          "n": 90
+        },
+        "predict_at_100": {
+          "median": 26.18973099743016,
+          "min": 17.651684996963013,
+          "max": 36.501677001069766,
+          "n": 90
+        },
+        "predict_when_first_call": {
+          "median": 60.916848000488244,
+          "min": 60.37103900598595,
+          "max": 67.7282950055087,
+          "n": 3
+        },
+        "predict_when_cached": {
+          "median": 25.535078999382677,
+          "min": 18.2388829998672,
+          "max": 38.985779996437486,
+          "n": 90
+        },
+        "predict_when_fleet_256": {
+          "median": 72.40113500301959,
+          "min": 60.872631998790894,
+          "max": 83.31218699458987,
+          "n": 18
+        }
+      }
+    },
+    {
+      "config": "battery",
+      "description": "NASA battery B0005 capacity (168 cycles), hidden_dim=16, history=20, horizon=30, batch=32, continuous decoder + conformal",
+      "device": "cuda",
+      "epochs_per_fit": 6,
+      "repeats": 3,
+      "epoch_seconds": {
+        "median": 1.7485210390004795,
+        "min": 1.4862507419966278,
+        "max": 1.9639132920056,
+        "n": 15
+      },
+      "first_epoch_seconds": {
+        "median": 1.6717330239989678,
+        "min": 1.5909766580007272,
+        "max": 2.6574186660000123,
+        "n": 3
+      },
+      "latency_ms": {
+        "predict": {
+          "median": 104.47132750050514,
+          "min": 74.01098099944647,
+          "max": 148.27738999883877,
+          "n": 90
+        },
+        "predict_at_100": {
+          "median": 105.12577200279338,
+          "min": 82.51716999802738,
+          "max": 141.74455699685495,
+          "n": 90
+        },
+        "predict_when_first_call": {
+          "median": 207.18012600264046,
+          "min": 193.2066580047831,
+          "max": 220.55193199776113,
+          "n": 3
+        },
+        "predict_when_cached": {
+          "median": 99.31949150268338,
+          "min": 71.17605499661295,
+          "max": 127.86313499964308,
+          "n": 90
+        },
+        "predict_when_fleet_256": {
+          "median": 100.07055450114422,
+          "min": 77.1313309960533,
+          "max": 119.82868400082225,
+          "n": 18
+        }
+      },
+      "peak_gpu_memory_mb": 43.68115234375
+    },
+    {
+      "config": "large-batch",
+      "description": "daily min temperature (3,647 pts), hidden_dim=128, history=120, horizon=28, batch=256, continuous decoder + conformal",
+      "device": "cpu",
+      "epochs_per_fit": 6,
+      "repeats": 3,
+      "epoch_seconds": {
+        "median": 35.33927407400188,
+        "min": 33.54118648500298,
+        "max": 40.44255560400052,
+        "n": 15
+      },
+      "first_epoch_seconds": {
+        "median": 33.222587901000225,
+        "min": 32.83904656099912,
+        "max": 36.68188811199798,
+        "n": 3
+      },
+      "latency_ms": {
+        "predict": {
+          "median": 50.63299099856522,
+          "min": 39.39274900039891,
+          "max": 72.89941800263477,
+          "n": 90
+        },
+        "predict_at_100": {
+          "median": 51.271473999804584,
+          "min": 39.25990800053114,
+          "max": 67.1726260043215,
+          "n": 90
+        },
+        "predict_when_first_call": {
+          "median": 58.820765996642876,
+          "min": 49.063933998695575,
+          "max": 1317.141236999305,
+          "n": 3
+        },
+        "predict_when_cached": {
+          "median": 52.22606450115563,
+          "min": 38.749695995647926,
+          "max": 76.3193439997849,
+          "n": 90
+        },
+        "predict_when_fleet_256": {
+          "median": 433.19663800139097,
+          "min": 396.59682899946347,
+          "max": 471.6585819987813,
+          "n": 18
+        }
+      }
+    },
+    {
+      "config": "large-batch",
+      "description": "daily min temperature (3,647 pts), hidden_dim=128, history=120, horizon=28, batch=256, continuous decoder + conformal",
+      "device": "cuda",
+      "epochs_per_fit": 6,
+      "repeats": 3,
+      "epoch_seconds": {
+        "median": 15.561312653997447,
+        "min": 13.545856176999223,
+        "max": 16.12282556500577,
+        "n": 15
+      },
+      "first_epoch_seconds": {
+        "median": 16.359409687000152,
+        "min": 14.74328620400047,
+        "max": 16.851284846001363,
+        "n": 3
+      },
+      "latency_ms": {
+        "predict": {
+          "median": 248.1145830024616,
+          "min": 221.15150899480795,
+          "max": 401.91431700077374,
+          "n": 90
+        },
+        "predict_at_100": {
+          "median": 238.80123349954374,
+          "min": 207.6531890052138,
+          "max": 375.2977940021083,
+          "n": 90
+        },
+        "predict_when_first_call": {
+          "median": 248.0064829942421,
+          "min": 236.68923799414188,
+          "max": 1035.7411479999428,
+          "n": 3
+        },
+        "predict_when_cached": {
+          "median": 232.17637500420096,
+          "min": 189.81633200019132,
+          "max": 315.35864000034053,
+          "n": 90
+        },
+        "predict_when_fleet_256": {
+          "median": 252.1204474978731,
+          "min": 231.20496299816296,
+          "max": 359.3339079961879,
+          "n": 18
+        }
+      },
+      "peak_gpu_memory_mb": 1500.74560546875
+    }
+  ]
+}

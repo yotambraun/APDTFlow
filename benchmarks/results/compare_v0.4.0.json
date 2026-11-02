@@ -1,0 +1,190 @@
+{
+  "hardware": {
+    "python": "3.12.12",
+    "platform": "Linux-5.15.133.1-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+    "processor": "x86_64",
+    "cpu_count": 20,
+    "torch": "2.14.1+cu126",
+    "torch_cuda": "12.6",
+    "torch_threads": 10,
+    "apdtflow": "0.4.0",
+    "cpu_model": "12th Gen Intel(R) Core(TM) i7-12700H",
+    "gpu": "NVIDIA GeForce RTX 3050 Ti Laptop GPU",
+    "gpu_memory_mb": 4095
+  },
+  "args": {
+    "devices": [
+      "cpu",
+      "cuda"
+    ],
+    "configs": [
+      "small",
+      "medium"
+    ],
+    "epochs": 4,
+    "repeats": 2,
+    "calls": 10,
+    "calibration_split": 0.0,
+    "out": "benchmarks/results/compare_v0.4.0.json"
+  },
+  "results": [
+    {
+      "config": "small",
+      "description": "daily min temperature (3,647 pts), hidden_dim=16, history=30, horizon=7, batch=32, transformer decoder",
+      "device": "cpu",
+      "epochs_per_fit": 4,
+      "repeats": 2,
+      "epoch_seconds": {
+        "median": 12.593874300000607,
+        "min": 12.28527085800306,
+        "max": 13.11898819799535,
+        "n": 6
+      },
+      "first_epoch_seconds": {
+        "median": 13.735086597498594,
+        "min": 12.198468279995723,
+        "max": 15.271704915001465,
+        "n": 2
+      },
+      "latency_ms": {
+        "predict": {
+          "median": 28.648920997511595,
+          "min": 20.552786998450756,
+          "max": 34.363072001724504,
+          "n": 20
+        }
+      }
+    },
+    {
+      "config": "small",
+      "description": "daily min temperature (3,647 pts), hidden_dim=16, history=30, horizon=7, batch=32, transformer decoder",
+      "device": "cuda",
+      "epochs_per_fit": 4,
+      "repeats": 2,
+      "epoch_seconds": {
+        "median": 47.073384293002164,
+        "min": 43.47393268800079,
+        "max": 48.07992776399624,
+        "n": 6
+      },
+      "first_epoch_seconds": {
+        "median": 42.91617210199911,
+        "min": 41.36364587100252,
+        "max": 44.4686983329957,
+        "n": 2
+      },
+      "latency_ms": {
+        "predict": {
+          "median": 192.40593199720024,
+          "min": 172.19946900149807,
+          "max": 219.98764800082427,
+          "n": 20
+        }
+      },
+      "peak_gpu_memory_mb": 24.33837890625
+    },
+    {
+      "config": "medium",
+      "description": "daily min temperature (3,647 pts), hidden_dim=64, history=60, horizon=14, batch=64, continuous decoder + conformal",
+      "device": "cpu",
+      "epochs_per_fit": 4,
+      "repeats": 2,
+      "epoch_seconds": {
+        "median": 50.929518282500794,
+        "min": 50.22008767499938,
+        "max": 51.288506975004566,
+        "n": 6
+      },
+      "first_epoch_seconds": {
+        "median": 49.833770280500175,
+        "min": 49.48374021299969,
+        "max": 50.18380034800066,
+        "n": 2
+      },
+      "latency_ms": {
+        "predict": {
+          "median": 56.62226700223982,
+          "min": 50.98057100258302,
+          "max": 86.18646700051613,
+          "n": 20
+        },
+        "predict_at_100": {
+          "median": 64.81959200027632,
+          "min": 51.04329800087726,
+          "max": 78.63014599570306,
+          "n": 20
+        },
+        "predict_when_first_call": {
+          "median": 77.81704249646282,
+          "min": 72.21401899732882,
+          "max": 83.42006599559681,
+          "n": 2
+        },
+        "predict_when_cached": {
+          "median": 73.02368599994224,
+          "min": 57.71441500110086,
+          "max": 85.07338300114498,
+          "n": 20
+        },
+        "predict_when_fleet_256": {
+          "median": 247.38749300013296,
+          "min": 223.7914700017427,
+          "max": 268.3986739939428,
+          "n": 6
+        }
+      }
+    },
+    {
+      "config": "medium",
+      "description": "daily min temperature (3,647 pts), hidden_dim=64, history=60, horizon=14, batch=64, continuous decoder + conformal",
+      "device": "cuda",
+      "epochs_per_fit": 4,
+      "repeats": 2,
+      "epoch_seconds": {
+        "median": 108.64139317049921,
+        "min": 106.4968135290037,
+        "max": 112.56389490099536,
+        "n": 6
+      },
+      "first_epoch_seconds": {
+        "median": 103.45642978450269,
+        "min": 102.64480824600469,
+        "max": 104.26805132300069,
+        "n": 2
+      },
+      "latency_ms": {
+        "predict": {
+          "median": 436.85317050039885,
+          "min": 406.8033160001505,
+          "max": 552.6779240026372,
+          "n": 20
+        },
+        "predict_at_100": {
+          "median": 471.3466085049731,
+          "min": 422.85189499671105,
+          "max": 625.3004879981745,
+          "n": 20
+        },
+        "predict_when_first_call": {
+          "median": 571.4068215020234,
+          "min": 569.999049002945,
+          "max": 572.8145940011018,
+          "n": 2
+        },
+        "predict_when_cached": {
+          "median": 583.9470645005349,
+          "min": 546.1821170028998,
+          "max": 625.4919959974359,
+          "n": 20
+        },
+        "predict_when_fleet_256": {
+          "median": 580.2832869994745,
+          "min": 527.4820889972034,
+          "max": 630.0074399987352,
+          "n": 6
+        }
+      },
+      "peak_gpu_memory_mb": 124.4091796875
+    }
+  ]
+}

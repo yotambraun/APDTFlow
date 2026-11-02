@@ -377,3 +377,18 @@ def test_exog_future_values_do_not_change_the_forecast():
     a = m.predict(exog_future=pd.DataFrame({"promo": np.zeros(7), "temp": np.zeros(7)}))
     b = m.predict(exog_future=pd.DataFrame({"promo": np.full(7, 5.0), "temp": np.full(7, -9.0)}))
     np.testing.assert_array_equal(a, b)
+
+
+@pytest.mark.parametrize("retrain", [False, True])
+def test_backtesting_with_exogenous_columns(retrain):
+    """Each fold uses its own exogenous window (0.4 skipped every fold)."""
+    from apdtflow import APDTFlowForecaster
+    df = _exog_frame(220)
+    m = APDTFlowForecaster(forecast_horizon=5, history_length=20, num_epochs=1,
+                           verbose=False, device="cpu")
+    m.fit(df, target_col="y", exog_cols=["promo", "temp"])
+    before = m.last_exog_sequence_.copy()
+    res = m.historical_forecasts(df, target_col="y", start=0.85, stride=10,
+                                 retrain=retrain, exog_cols=["promo", "temp"])
+    assert len(res) > 0 and np.isfinite(res["predicted"]).all()
+    np.testing.assert_array_equal(m.last_exog_sequence_, before)  # state restored

@@ -1267,6 +1267,17 @@ class APDTFlowForecaster:
             return self.last_date_ + tau * self.freq_delta_
         return float(tau)
 
+    def _exog_rows(self, data: pd.DataFrame, start: int, end: int) -> np.ndarray:
+        """Normalized exogenous rows ``start:end`` of ``data``, built like fit()."""
+        parts = []
+        if self.has_numerical_exog_ and self.exog_cols_:
+            parts.append(data[self.exog_cols_].iloc[start:end].to_numpy(dtype=float))
+        if self.has_categorical_ and self.categorical_encoder_ is not None:
+            parts.append(np.asarray(self.categorical_encoder_.transform(
+                data[self.categorical_cols_].iloc[start:end]), dtype=float))
+        rows = np.concatenate(parts, axis=1)
+        return (rows - self.exog_mean_) / self.exog_std_
+
     def _exog_tensor_for_window(self, exog_future, steps: int):
         """Exogenous input for the last fitted window, shape (1, n_exog, T_in).
 
@@ -2081,7 +2092,14 @@ class APDTFlowForecaster:
                         exog_cols=exog_cols,
                         categorical_cols=categorical_cols
                     )
-                    predictions = temp_model.predict(steps=forecast_horizon)
+                    fold_future = None
+                    if temp_model.has_numerical_exog_ and isinstance(data, pd.DataFrame):
+                        fold_future = data[temp_model.exog_cols_].iloc[i:i + forecast_horizon]
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings(
+                            "ignore", message="exog_future does not change the forecast")
+                        predictions = temp_model.predict(steps=forecast_horizon,
+                                                         exog_future=fold_future)
                 except Exception as e:
                     if self.verbose:
                         logger.info(f"Skipping fold {fold} due to error: {e}")
@@ -2096,20 +2114,31 @@ class APDTFlowForecaster:
                 assert self.last_sequence_ is not None, "last_sequence_ must be set"
                 original_last_seq = self.last_sequence_.copy()
 
-                # Temporarily update
+                # Temporarily update (and the exogenous window, when used)
                 self.last_sequence_ = window_norm
+                original_last_exog = self.last_exog_sequence_
+                fold_future = None
+                if self.has_exog_ and isinstance(data, pd.DataFrame):
+                    self.last_exog_sequence_ = self._exog_rows(
+                        data, i - self.history_length, i)
+                    if self.has_numerical_exog_:
+                        fold_future = data[self.future_exog_cols_ or self.exog_cols_].iloc[
+                            i:i + forecast_horizon]
 
                 try:
-                    predictions = self.predict(steps=forecast_horizon)
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings(
+                            "ignore", message="exog_future does not change the forecast")
+                        predictions = self.predict(steps=forecast_horizon,
+                                                   exog_future=fold_future)
                 except Exception as e:
                     if self.verbose:
                         logger.info(f"Skipping fold {fold} due to error: {e}")
-                    # Restore original
-                    self.last_sequence_ = original_last_seq
                     continue
-
-                # Restore original last_sequence
-                self.last_sequence_ = original_last_seq
+                finally:
+                    # Restore the fitted state
+                    self.last_sequence_ = original_last_seq
+                    self.last_exog_sequence_ = original_last_exog
 
             # Store results for each forecast step
             for step in range(forecast_horizon):

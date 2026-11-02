@@ -33,9 +33,6 @@ class NeuralDynamics(nn.Module):
         return delta_mu, delta_logvar
 
 
-# Deprecated alias, kept for one release (the class was renamed in v0.4.0).
-HierarchicalNeuralDynamics = NeuralDynamics
-
 
 def solve_latent_ode(dynamics, h0, logvar0, t_span, x_scale_sequence, ode_method="rk4"):
     """Integrate the latent Neural ODE over ``t_span``.
@@ -98,7 +95,3 @@ def solve_latent_ode(dynamics, h0, logvar0, t_span, x_scale_sequence, ode_method
     h_sol = sol[0].transpose(0, 1)
     logvar_sol = sol[1].transpose(0, 1)
     return h_sol, logvar_sol
-
-
-# Deprecated alias, kept for one release (the function was renamed in v0.4.0).
-adaptive_hierarchical_ode_solver = solve_latent_ode

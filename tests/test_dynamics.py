@@ -1,12 +1,8 @@
 import pytest
 import torch
 
-from apdtflow.models.dynamics import (
-    HierarchicalNeuralDynamics,
-    NeuralDynamics,
-    adaptive_hierarchical_ode_solver,
-    solve_latent_ode,
-)
+from apdtflow.models import dynamics as dynamics_module
+from apdtflow.models.dynamics import NeuralDynamics, solve_latent_ode
 
 
 def test_neural_dynamics_forward():
@@ -22,9 +18,10 @@ def test_neural_dynamics_forward():
     assert delta_logvar.shape == (batch_size, hidden_dim)
 
 
-def test_deprecated_aliases():
-    assert HierarchicalNeuralDynamics is NeuralDynamics
-    assert adaptive_hierarchical_ode_solver is solve_latent_ode
+def test_deprecated_aliases_removed():
+    # Kept through the 0.4.x series, removed in 0.5.0 (CHANGELOG).
+    assert not hasattr(dynamics_module, "HierarchicalNeuralDynamics")
+    assert not hasattr(dynamics_module, "adaptive_hierarchical_ode_solver")
 
 
 @pytest.mark.parametrize("ode_method", ["rk4", "dopri5_adjoint"])

@@ -1,6 +1,6 @@
 # APDTFlow Model Architectures
 
-This document describes the model architectures shipped in APDTFlow v0.4.0: the main
+This document describes the model architectures shipped in APDTFlow v0.5.0: the main
 APDTFlow model (with its two decoder variants), and the three alternative cores —
 TransformerForecaster, TCNForecaster, and EnsembleForecaster.
 
@@ -48,8 +48,8 @@ log-variance. Integration uses `torchdiffeq`:
 Treating the latent state as a continuous-time trajectory — rather than a discrete
 recurrence — is what later enables `predict_at` and `predict_when`.
 
-> Note: this class was named `HierarchicalNeuralDynamics` before v0.4.0. The old name
-> remains as a deprecated alias for one minor release.
+> Note: this class was named `HierarchicalNeuralDynamics` before v0.4.0. The
+> deprecated alias was kept through 0.4.x and removed in 0.5.0.
 
 ### 1.3 Additive time embedding (gated residual networks)
 

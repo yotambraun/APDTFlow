@@ -97,8 +97,10 @@ python benchmarks/benchmark_device.py`;
       <p class="eyebrow mb-3">Speed</p>
       <h2 class="text-3xl font-bold tracking-tight">CPU or GPU?</h2>
       <p class="mt-3 text-muted">
-        Measured, median of all epochs after the first, 3 fits each. The default-size
-        model is faster on the CPU; a GPU only pays off for bigger models and batches.
+        Training time per epoch, median of all epochs after the first, 3 fits each. Each
+        training step runs as a CUDA graph on the GPU, which is what makes it win; before
+        graph capture the default-size model trained 2x faster on the CPU. Single-window
+        calls are still faster on the CPU.
       </p>
     </div>
     <div class="overflow-x-auto">

@@ -95,6 +95,17 @@ GPU and device support done properly (including CUDA-graph training), a working
   `site-packages`; the wheel now contains only `apdtflow`.
 
 ### Performance
+- **CUDA-graph training.** At the default size a training step launched about
+  20,000 tiny GPU kernels, and the GPU was busy for 40 ms of a 320 ms step, so a GPU
+  trained 2x slower than a laptop CPU. On CUDA, `fit()` now captures one optimizer
+  step (forward, backward and Adam) as a CUDA graph and replays it for every full
+  batch; partial batches run eagerly on the same state, and the arithmetic is
+  unchanged (tests check graph and eager training agree step for step). Measured on
+  an RTX 3050 Ti laptop GPU under WSL2: 3–9x faster than eager GPU training, and
+  4.4–6.8x faster than the i7-12700H CPU (default size: 1.0 vs 4.6 s per epoch).
+  Used on CUDA with `ode_method='rk4'` and no exogenous inputs; new parameter
+  `cuda_graphs=False` turns it off. Inference is not graph-captured, so single-window
+  calls remain faster on the CPU.
 - The fixed-step RK4 integration (encoder and continuous decoder) no longer
   synchronises the GPU with the host on every solver step: torchdiffeq's grid
   loop compares tensor values in Python each step, and the encoder looked up its

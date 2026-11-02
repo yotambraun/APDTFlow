@@ -13,12 +13,17 @@ device:
   fleet,
 * peak GPU memory allocated by PyTorch (CUDA only).
 
+``cuda`` trains with CUDA graphs (the default since 0.5.0); ``cuda-eager``
+is the same device with ``cuda_graphs=False``, to show what graph capture
+changes.
+
 Every configuration is fitted ``--repeats`` times with different seeds; the
 report gives the median and the min-max spread across all measured samples.
 
 Usage (from the repository root)::
 
     python benchmarks/benchmark_device.py                       # cpu + cuda/mps if present
+    python benchmarks/benchmark_device.py --devices cpu cuda cuda-eager
     python benchmarks/benchmark_device.py --devices cpu cuda --repeats 3
     python benchmarks/benchmark_device.py --configs small --epochs 4  # quick check
 
@@ -140,7 +145,13 @@ def run_config(name: str, device_name: str, epochs: int, repeats: int,
                n_calls: int, calibration_split: Optional[float] = None) -> dict:
     cfg = CONFIGS[name]
     df = cfg["data"]()
-    device = torch.device(device_name)
+    extra: dict = {}
+    if device_name == "cuda-eager":
+        # Only passed for this mode, so the script still runs on releases
+        # that predate the cuda_graphs parameter.
+        extra["cuda_graphs"] = False
+    torch_device = "cuda" if device_name == "cuda-eager" else device_name
+    device = torch.device(torch_device)
     epoch_times: List[float] = []
     first_epoch: List[float] = []
     lat: Dict[str, List[float]] = {}
@@ -154,8 +165,8 @@ def run_config(name: str, device_name: str, epochs: int, repeats: int,
         kwargs = dict(cfg["model"])
         if calibration_split is not None:
             kwargs["calibration_split"] = calibration_split
-        model = APDTFlowForecaster(num_epochs=epochs, device=device_name,
-                                   verbose=False, **kwargs)
+        model = APDTFlowForecaster(num_epochs=epochs, device=torch_device,
+                                   verbose=False, **kwargs, **extra)
         stamps: List[float] = []
 
         def _cb(epoch, metrics, _stamps=stamps):
@@ -271,7 +282,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     default_devices = ["cpu"]
     if torch.cuda.is_available():
-        default_devices.append("cuda")
+        default_devices += ["cuda", "cuda-eager"]
     if mps_is_available():
         default_devices.append("mps")
     parser.add_argument("--devices", nargs="+", default=default_devices)

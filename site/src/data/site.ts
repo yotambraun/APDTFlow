@@ -128,12 +128,12 @@ export const gridRows = [
 ];
 
 // CPU vs GPU training speed (docs/gpu_and_performance.md) — measured 2026-11-02
-// with benchmarks/benchmark_device.py; seconds per epoch, median of 15 epochs.
-export const perfRows = [
-  { config: 'Default-size model (hidden 16, batch 32)', cpu: '3.6 s', gpu: '7.5 s', winner: 'cpu' as const, verdict: 'CPU, 2.1x' },
-  { config: 'Continuous decoder (hidden 64, batch 64)', cpu: '19.3 s', gpu: '27.6 s', winner: 'cpu' as const, verdict: 'CPU, 1.4x' },
-  { config: 'NASA battery, 66 windows (hidden 16)', cpu: '0.65 s', gpu: '1.75 s', winner: 'cpu' as const, verdict: 'CPU, 2.7x' },
-  { config: 'Large model (hidden 128, batch 256)', cpu: '35.3 s', gpu: '15.6 s', winner: 'gpu' as const, verdict: 'GPU, 2.3x' },
+// with benchmarks/benchmark_device.py; seconds per epoch, median of 15 epochs; GPU = CUDA graphs (default).
+export const perfRows: { config: string; cpu: string; gpu: string; winner: 'cpu' | 'gpu'; verdict: string }[] = [
+  { config: 'Default-size model (hidden 16, batch 32)', cpu: '4.60 s', gpu: '1.04 s', winner: 'gpu', verdict: 'GPU, 4.4x' },
+  { config: 'Continuous decoder (hidden 64, batch 64)', cpu: '22.4 s', gpu: '4.44 s', winner: 'gpu', verdict: 'GPU, 5.0x' },
+  { config: 'NASA battery, 119 windows (hidden 16)', cpu: '0.81 s', gpu: '0.73 s', winner: 'gpu', verdict: 'about even' },
+  { config: 'Large model (hidden 128, batch 256)', cpu: '41.7 s', gpu: '6.10 s', winner: 'gpu', verdict: 'GPU, 6.8x' },
 ];
 export const perfHardware =
   'Intel Core i7-12700H vs NVIDIA RTX 3050 Ti Laptop GPU (4 GB), WSL2, PyTorch 2.14.1, apdtflow 0.5.0.';
@@ -435,7 +435,7 @@ s['coverage']      # vs expected coverage — recalibrate if it drops`,
         name: 'GPU & device selection',
         value: "device='auto' picks CUDA, then Apple MPS, then CPU; move a fitted model with .to().",
         description:
-          'Training, conformal calibration, predict, predict_at, predict_when and fleet scoring all run on the selected device, and checkpoints are stored on CPU so a GPU-trained model loads anywhere. Measured on a laptop: the default-size model trains faster on CPU; the GPU pays off for larger models and batches.',
+          'Training, conformal calibration, predict, predict_at, predict_when and fleet scoring all run on the selected device, and checkpoints are stored on CPU so a GPU-trained model loads anywhere. On NVIDIA GPUs each training step is replayed as a CUDA graph; measured on a laptop, the GPU trains 4 to 7 times faster than the CPU, while single-window calls stay faster on the CPU.',
         api: "APDTFlowForecaster(device='auto'); model.to('cpu')",
         note: 'Benchmark table, hardware and when a GPU helps: docs/gpu_and_performance.md.',
       },

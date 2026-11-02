@@ -2,8 +2,9 @@
 
 APDTFlow runs on CPU, NVIDIA CUDA and Apple MPS. This page covers how to pick a
 device, what runs where, and, with measured numbers, **when a GPU actually helps**.
-Short version: the default-size model trains faster on a CPU; a GPU pays off once
-the model and the batches get bigger.
+Short version: **training runs 4 to 7 times faster on a GPU** than on a laptop CPU,
+because each training step is replayed as a CUDA graph (on by default); scoring a
+single window is still faster on the CPU.
 
 ## Choosing a device
 
@@ -47,33 +48,49 @@ CPU-only one; this also covers checkpoints written by 0.4.x.
 On CUDA, training batches come from pinned host memory and are copied
 asynchronously.
 
-## Why a small model is faster on CPU
+## Why the GPU used to lose, and what CUDA graphs change
 
 An APDTFlow forward pass integrates a latent ODE step by step. With the default
 `ode_method="rk4"` that is one RK4 step per input time point, four evaluations of a
 small MLP per step, then the decoder (for `decoder_type="continuous"`, another ODE at
-step size 0.25). Each evaluation is a handful of small matrix operations, so a
-forward/backward pass is thousands of tiny GPU kernels. Until a batch is large enough
-to fill the GPU, the time goes to launching kernels, not computing. A modern CPU runs
-the same small operations with less overhead.
+step size 0.25), and backward doubles it. Each evaluation is a handful of small
+matrix operations on a `(batch, hidden_dim)` tensor.
 
-0.5.0 removes the avoidable overheads: no GPU-host synchronisation per solver step,
-all scales integrated in one batch, the convolution dilation cached, and one loss
-read per epoch instead of one per batch. What remains is inherent to stepping an ODE
-in small increments.
+Profiling one default-size training step on the GPU below found **20,650 kernel
+launches**, with the GPU busy for **40 ms of a 320 ms step**. The step took the same
+time at batch 8 and batch 2,048: the time went to launching kernels from Python, not
+to arithmetic, so the GPU lost to the CPU (whose per-operation overhead is about
+2 µs here, against about 10 µs per GPU launch under WSL2). The torchdiffeq
+maintainers describe the same effect for small problems
+([torchdiffeq #15](https://github.com/rtqichen/torchdiffeq/issues/15)).
+
+**CUDA graphs** remove that overhead without changing the arithmetic. On CUDA, `fit()`
+records one whole optimizer step (forward, backward and Adam) as a graph after three
+warm-up steps, then replays it for every full batch with a single launch, following
+the whole-iteration recipe of the
+[PyTorch CUDA-graphs guide](https://pytorch.org/blog/accelerating-pytorch-with-cuda-graphs/).
+The last, partial batch of an epoch runs eagerly on the same parameters and optimizer
+state. Tests check that graph and eager training produce the same losses and
+parameters step for step. Graphs are used when the device is CUDA, `ode_method` is
+`"rk4"` and there are no exogenous inputs; anything else trains eagerly, and
+`cuda_graphs=False` turns them off (for debugging).
+
+0.5.0 also removed the avoidable overheads that graphs cannot: no GPU-host
+synchronisation per solver step, all scales integrated in one batch, the convolution
+dilation cached, and one loss read per epoch instead of one per batch.
 
 Practical rules, from the measurements below:
 
-- **Default-size models (hidden_dim 16, batch 32): use the CPU.**
-- **On a GPU, raise `batch_size`.** The per-step time stays almost flat as the batch
-  grows until the GPU saturates, so epochs get proportionally shorter. The gain is
-  largest with bigger models (`hidden_dim` 64 to 128, longer `history_length`).
-- **Serving one window at a time is latency-bound: use the CPU.** Batch scoring
-  (`predict_when_fleet` over many assets, `score_recent`, backtests) is where a GPU
-  can win.
+- **Train on the GPU.** It was 4 to 7 times faster than this CPU at every size except
+  a 66-window dataset, where the two were even.
+- **Serve single windows on the CPU** (`model.to("cpu")` after training). Inference is
+  not graph-captured, so one-window calls are launch-bound on a GPU: 3 to 5 times
+  slower than on the CPU here. Batch scoring of many assets (`predict_when_fleet`) is
+  where a GPU still helps.
 - On CPU, `apdtflow.set_seed(0)` (deterministic mode) also limits PyTorch to **one
   thread**, for bit-for-bit reproducibility. Use `set_seed(0, deterministic=False)`
-  when you want speed.
+  when you want speed. Results differ between CPU and GPU for the same seed (they draw
+  different random numbers), so compare runs on one device.
 
 ## Measured: CPU vs CUDA
 
@@ -85,51 +102,54 @@ Linux box or a desktop/server GPU the crossover comes sooner. Treat these number
 one data point, not a promise.
 
 **Method.** `python benchmarks/benchmark_device.py --configs small medium battery
-large-batch --devices cpu cuda --epochs 6 --repeats 3 --calls 30`. Each configuration
-was fitted 3 times per device (seeds 0-2, `set_seed(seed, deterministic=False)`) for
-6 epochs. The epoch figures are the median and min-max over the 15 epochs after each
-fit's first (warm-up) epoch. Inference timings are 30 calls per fit after 3 warm-up
+large-batch --devices cpu cuda cuda-eager --epochs 6 --repeats 3 --calls 30`. `cuda`
+is the default (CUDA graphs); `cuda-eager` is the same GPU with `cuda_graphs=False`,
+i.e. how 0.5.0 trained before graph capture. Each configuration was fitted 3 times per
+device (seeds 0-2, `set_seed(seed, deterministic=False)`) for 6 epochs. The epoch
+figures are the median and min-max over the 15 epochs after each fit's first (warm-up,
+and for graphs capture) epoch. Inference timings are 30 calls per fit after 3 warm-up
 calls (fleet: 6 calls after 1), synchronised with the device. Default settings
-otherwise (`use_conformal=True`, so 20% of windows are held out for calibration).
-Raw results: [`benchmarks/results/device_benchmark.json`](../benchmarks/results/device_benchmark.json).
+otherwise (`use_conformal=True`, calibrated on the training windows). Raw results:
+[`benchmarks/results/device_benchmark.json`](../benchmarks/results/device_benchmark.json).
 
 | Config | What | Training windows per epoch |
 |---|---|---|
-| small | daily min temperature (3,647 pts), hidden_dim 16, history 30, horizon 7, batch 32, transformer decoder (the library defaults, except the horizon) | 2,883 |
-| medium | same data, hidden_dim 64, history 60, horizon 14, batch 64, continuous decoder | 2,846 |
-| battery | NASA battery B0005 capacity (168 cycles), hidden_dim 16, history 20, horizon 30, batch 32, continuous decoder | 66 |
-| large-batch | same temperature data, hidden_dim 128, history 120, horizon 28, batch 256, continuous decoder | 2,773 |
+| small | daily min temperature (3,647 pts), hidden_dim 16, history 30, horizon 7, batch 32, transformer decoder (the library defaults, except the horizon) | 3,611 |
+| medium | same data, hidden_dim 64, history 60, horizon 14, batch 64, continuous decoder | 3,574 |
+| battery | NASA battery B0005 capacity (168 cycles), hidden_dim 16, history 20, horizon 30, batch 32, continuous decoder | 119 |
+| large-batch | same temperature data, hidden_dim 128, history 120, horizon 28, batch 256, continuous decoder | 3,500 |
 
 ### Training: seconds per epoch (median, min-max)
 
-| Config | CPU | CUDA | Faster | Peak GPU memory |
-|---|---|---|---|---|
-| small | **3.59** (3.32–3.76) | 7.52 (7.10–8.03) | CPU, 2.1x | 28 MB |
-| medium | **19.3** (18.8–21.7) | 27.6 (24.8–30.4) | CPU, 1.4x | 129 MB |
-| battery | **0.65** (0.59–0.71) | 1.75 (1.49–1.96) | CPU, 2.7x | 44 MB |
-| large-batch | 35.3 (33.5–40.4) | **15.6** (13.5–16.1) | **CUDA, 2.3x** | 1,501 MB |
+| Config | CPU | CUDA (graphs, default) | CUDA eager | GPU vs CPU | Graphs vs eager | Peak GPU memory |
+|---|---|---|---|---|---|---|
+| small | 4.60 (4.37–5.31) | **1.04** (1.03–1.07) | 9.09 (7.54–11.0) | 4.4x faster | 8.8x | 89 MB |
+| medium | 22.4 (22.1–22.9) | **4.44** (4.31–4.55) | 33.3 (29.9–37.6) | 5.0x faster | 7.5x | 237 MB |
+| battery | 0.81 (0.75–0.90) | **0.73** (0.63–1.36) | 2.42 (2.27–2.57) | even | 3.3x | 197 MB |
+| large-batch | 41.7 (40.2–46.4) | **6.10** (5.57–6.57) | 19.4 (18.0–22.7) | 6.8x faster | 3.2x | 1,723 MB |
 
 ### Inference: milliseconds per call (median, min-max)
 
 | Config | Call | CPU | CUDA |
 |---|---|---|---|
-| small | `predict()` (one window) | **8.3** (5.2–14.4) | 29.2 (24.4–57.7) |
-| medium | `predict()` | **26.8** (18.6–37.0) | 100 (78–159) |
-| medium | `predict_at`, 100 timestamps | **26.6** (20.2–39.3) | 104 (71–164) |
-| medium | `predict_when`, calibration cached | **27.1** (19.3–42.2) | 100 (77–143) |
-| medium | `predict_when`, first call for a threshold | **33.1** (23.8–37.8) | 99.6 (96.2–101) |
-| medium | `predict_when_fleet`, 256 assets | 152 (139–218) | **106** (97–123) |
-| battery | `predict_when_fleet`, 256 assets | **72** (61–83) | 100 (77–120) |
-| large-batch | `predict()` | **51** (39–73) | 248 (221–402) |
-| large-batch | `predict_when_fleet`, 256 assets | 433 (397–472) | **252** (231–359) |
+| small | `predict()` (one window) | **6.8** (5.5–11.4) | 27.9 (23.8–38.1) |
+| medium | `predict()` | **23.2** (18.0–32.2) | 104 (93–149) |
+| medium | `predict_at`, 100 timestamps | **26.6** (17.9–38.4) | 99 (75–123) |
+| medium | `predict_when`, calibration cached | **24.5** (17.4–39.6) | 99 (76–139) |
+| medium | `predict_when`, first call for a threshold | **22.0** (19.3–23.4) | 100 (95–107) |
+| medium | `predict_when_fleet`, 256 assets | 138 (131–183) | **106** (92–139) |
+| battery | `predict_when_fleet`, 256 assets | **66** (55–79) | 102 (77–121) |
+| large-batch | `predict()` | **47** (37–65) | 231 (194–317) |
+| large-batch | `predict_when_fleet`, 256 assets | 391 (369–434) | **258** (225–475) |
 
-**Reading.** The default-size models are latency-bound: the CPU trains them 1.4 to
-2.7x faster and answers single-window calls 3 to 5x faster. With hidden_dim 128 and
-batch 256 the GPU trains 2.3x faster, and scoring 256 assets at once is faster on the
-GPU for the medium and large models. We expect a larger GPU or native Linux to
-widen the GPU's lead at large sizes (not measured here). For the default sizes the
-bottleneck is per-step overhead rather than arithmetic, so we expect little change
-there.
+**Reading.** With graphs the GPU trains 4.4 to 6.8 times faster than the CPU, and 3 to
+9 times faster than eager GPU training, which used to lose to the CPU at default sizes.
+The gain from graphs is largest for small models, where launches dominated. On the
+66-window battery data there are only four batches per epoch, so CPU and GPU are
+even. Inference was not changed: single-window calls stay 3 to 5 times faster on the
+CPU, and scoring 256 assets at once is faster on the GPU for the medium and large
+models. A larger GPU or native Linux (no WSL2 launch overhead) should favour the GPU
+further; not measured here.
 
 ### 0.5.0 vs 0.4.0 on the same work
 
@@ -137,7 +157,8 @@ Same machine, same script, run against the 0.4.0 code (`main` at 9829c41, whose
 only package change since the 0.4.0 release is a type annotation) and against 0.5.0, both with `--calibration-split 0` so they train on identical
 windows (0.4.0 always trained on all of them): `python benchmarks/benchmark_device.py
 --configs small medium --devices cpu cuda --epochs 4 --repeats 2 --calls 10
---calibration-split 0`. Median over 6 post-warm-up epochs (min-max). Raw results:
+--calibration-split 0`. Median over 6 post-warm-up epochs (min-max). The CUDA rows are
+eager training (measured before CUDA-graph capture). Raw results:
 [`compare_v0.4.0.json`](../benchmarks/results/compare_v0.4.0.json),
 [`compare_v0.5.0.json`](../benchmarks/results/compare_v0.5.0.json).
 
@@ -188,15 +209,16 @@ with MPS, but they were skipped here (and in CI). The operations involved (`Conv
 `BatchNorm1d`, `Linear`, `TransformerDecoder`, `sort`, `unique`, `searchsorted`,
 `gather`) are standard, but if your PyTorch version lacks an MPS kernel for one of
 them, `PYTORCH_ENABLE_MPS_FALLBACK=1` runs that op on the CPU. Performance on MPS is
-unmeasured; the small-kernel reasoning above suggests the CPU will also win for
-default-size models there. Reports from Mac users (run `pytest tests/test_device.py`
+unmeasured. PyTorch has no graph capture for MPS, so MPS trains eagerly, and the
+launch-overhead reasoning above suggests the CPU may win for default-size models
+there. Reports from Mac users (run `pytest tests/test_device.py`
 and `python benchmarks/benchmark_device.py`) are welcome.
 
 ## Reproduce
 
 ```bash
 pip install -e ".[dev]"
-python benchmarks/benchmark_device.py                     # cpu + cuda/mps if present
+python benchmarks/benchmark_device.py                     # cpu, cuda, cuda-eager / mps if present
 python benchmarks/benchmark_device.py --configs small --epochs 3 --repeats 1   # quick look
 pytest tests/test_device.py                               # device tests (cuda/mps skip if absent)
 ```

@@ -141,12 +141,14 @@ runs on the selected device: training, conformal calibration, `predict`,
 `predict_at`, `predict_when` and fleet scoring. Checkpoints are stored on CPU, so a
 model trained on a GPU loads anywhere, and `model.to("cpu")` moves a fitted model.
 
-Measured on one laptop (Intel i7-12700H vs an RTX 3050 Ti Laptop GPU, WSL2), the
-default-size model trains **2.1x faster on the CPU** (3.6 vs 7.5 s per epoch) and
-answers single-window calls faster there too. At `hidden_dim=128` and `batch_size=256`
-the **GPU trains 2.3x faster** (15.6 vs 35.3 s per epoch). Rule of thumb: use the CPU
-for default sizes and for serving, and a GPU for big models, big batches and
-fleet-scale scoring. Full tables, method and the measured reason AMP is not used:
+On an NVIDIA GPU each training step is captured once and replayed as a **CUDA
+graph**: the same arithmetic without the ~20,000 tiny kernel launches per step that
+used to make the GPU slower than the CPU. Measured on one laptop (Intel i7-12700H vs
+an RTX 3050 Ti Laptop GPU, WSL2), the **GPU now trains 4.4x faster than the CPU at
+the default size** (1.0 vs 4.6 s per epoch) and 5–7x faster for bigger models.
+Single-window calls are still faster on the CPU, so train on the GPU and serve with
+`model.to("cpu")`; fleet-scale scoring favours the GPU. Full tables, the profile, the
+method and the measured reason AMP is not used:
 [docs/gpu_and_performance.md](docs/gpu_and_performance.md).
 
 ## When NOT to use APDTFlow

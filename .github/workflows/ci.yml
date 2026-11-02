@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
     paths-ignore:
       - 'docs/**'
       - 'README.md'
@@ -13,7 +13,7 @@ on:
       - 'site/**'
       - '*.ipynb'
   pull_request:
-    branches: [ main ]
+    branches: [main]
     paths-ignore:
       - 'docs/**'
       - 'README.md'
@@ -24,53 +24,76 @@ on:
       - 'site/**'
       - '*.ipynb'
 
-jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.10", "3.11", "3.12"]
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+permissions:
+  contents: read
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          python-version: "3.12"
+          activate-environment: true
+          enable-cache: true
+      # PyPI's Linux torch wheels bundle CUDA (several GB); CI only needs CPU.
+      - run: uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: uv pip install -e ".[dev]"
+      - run: flake8 apdtflow tests benchmarks
+      - run: mypy apdtflow
+
+  test:
+    name: test (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        include:
+          - os: macos-latest
+            python-version: "3.13"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
           python-version: ${{ matrix.python-version }}
+          activate-environment: true
+          enable-cache: true
+      - name: Install CPU torch (Linux)
+        if: runner.os == 'Linux'
+        run: uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Install package
+        run: uv pip install -e ".[dev]"
 
-      - name: Cache pip packages
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}-${{ matrix.python-version }}
-          restore-keys: |
-            ${{ runner.os }}-pip-${{ matrix.python-version }}
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install .
-          pip install -r requirements-dev.txt
-
-      - name: Run flake8
-        run: flake8 apdtflow tests
-
-      - name: Run mypy
-        run: mypy apdtflow
-
-      # Pull requests run the fast suite; pushes to main also run the
-      # slow learning/calibration regression tests (they train models).
+      # Pull requests (and macOS) run the fast suite; pushes to main on Linux
+      # also run the slow learning/calibration regression tests (they train
+      # models). The device tests run on CPU here; the CUDA/MPS variants skip
+      # unless that hardware is present.
       - name: Run tests (fast)
-        if: github.event_name == 'pull_request'
-        run: pytest -m "not slow" --maxfail=1 --disable-warnings -q --cov=apdtflow --cov-report=term-missing
+        if: github.event_name == 'pull_request' || runner.os != 'Linux'
+        run: pytest -m "not slow" -q --cov=apdtflow --cov-report=xml
 
       - name: Run tests (full, incl. slow)
-        if: github.event_name == 'push'
-        run: pytest --maxfail=1 --disable-warnings -q --cov=apdtflow --cov-report=term-missing
+        if: github.event_name == 'push' && runner.os == 'Linux'
+        run: pytest -q --cov=apdtflow --cov-report=xml
 
       - name: Upload coverage reports to Codecov
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         uses: codecov/codecov-action@v5
         with:
           slug: yotambraun/APDTFlow
+          fail_ci_if_error: false
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
+      - run: uv build
+      - run: uvx twine check --strict dist/*

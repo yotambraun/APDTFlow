@@ -1,0 +1,92 @@
+# Push a tag like v0.5.0 to build, smoke-test, publish to PyPI (Trusted
+# Publishing, no API token) and create the GitHub release.
+#
+# One-time setup on PyPI (project apdtflow -> Settings -> Publishing ->
+# "Add a new publisher", GitHub):
+#   owner: yotambraun   repository: APDTFlow
+#   workflow: release.yml   environment: pypi
+# and on GitHub: Settings -> Environments -> New environment "pypi".
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
+      - name: Check the tag matches the package version
+        run: |
+          version=$(uv version --short)
+          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match version ${version} in pyproject.toml"
+            exit 1
+          fi
+          init_version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' apdtflow/__init__.py)
+          if [ "${init_version}" != "${version}" ]; then
+            echo "::error::apdtflow/__init__.py says ${init_version}, pyproject.toml says ${version}"
+            exit 1
+          fi
+      - run: uv build
+      - run: uvx twine check --strict dist/*
+      - name: Smoke-test the wheel
+        run: |
+          uv venv /tmp/smoke --python 3.12
+          uv pip install --python /tmp/smoke torch --index-url https://download.pytorch.org/whl/cpu
+          uv pip install --python /tmp/smoke dist/*.whl
+          /tmp/smoke/bin/apdtflow --help > /dev/null
+          cd /tmp && /tmp/smoke/bin/python - <<'EOF'
+          import numpy as np
+          import apdtflow
+          from apdtflow import APDTFlowForecaster
+          print("apdtflow", apdtflow.__version__)
+          t = np.arange(300, dtype=float)
+          y = np.sin(t / 8.0) + t / 100.0
+          m = APDTFlowForecaster(forecast_horizon=10, history_length=30, num_epochs=1,
+                                 decoder_type="continuous", use_conformal=True,
+                                 device="cpu", verbose=False)
+          m.fit(y)
+          assert m.predict().shape == (10,)
+          print(m.predict_when(threshold=float(y.max()), direction="above"))
+          EOF
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/apdtflow/
+    permissions:
+      id-token: write # Trusted Publishing + PEP 740 attestations
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes --verify-tag

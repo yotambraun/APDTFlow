@@ -38,8 +38,8 @@ const groups = featureGroups.filter((g) => g.section === section.slug);
           <div
             class={
               group.layout === 'list'
-                ? 'mt-6 grid gap-4 md:grid-cols-2'
-                : 'mt-6 grid gap-5 md:grid-cols-2'
+                ? 'mt-6 grid grid-cols-1 gap-4 md:grid-cols-2'
+                : 'mt-6 grid grid-cols-1 gap-5 md:grid-cols-2'
             }
           >
             {group.items.map((item) => (

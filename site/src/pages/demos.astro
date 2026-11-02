@@ -87,7 +87,7 @@ const demos = [
   <div class="wrap space-y-20 pb-16">
     {
       demos.map((d, i) => (
-        <section id={d.id} class="grid items-start gap-8 lg:grid-cols-2">
+        <section id={d.id} class="grid grid-cols-1 items-start gap-8 lg:grid-cols-2">
           <div class={i % 2 === 1 ? 'lg:order-2' : ''}>
             <p class="eyebrow mb-2">{d.eyebrow}</p>
             <h2 class="text-2xl font-bold tracking-tight sm:text-3xl">{d.title}</h2>

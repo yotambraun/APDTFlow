@@ -171,33 +171,39 @@ def test_offsets_accept_mixed_timestamps_and_floats():
     np.testing.assert_allclose(m._offsets_from_timestamps([3.0]), [3.0])
 
 
-def test_training_loss_encodes_and_decodes_once():
-    """The grid loss and the random-query loss share one encoder pass and one
-    decoder ODE solve; running each twice doubled the cost of every step."""
+def _published_training_loss(model, x, y, t_span):
+    """The training loss as apdtflow 0.4/0.5.0 computed it, from public calls:
+    forward() for the grid term, then the random offsets, then forward_at()."""
+    horizon = model.forecast_horizon
+    yy = y.transpose(1, 2)
+    preds_grid, _ = model(x, t_span)
+    taus = (torch.rand(horizon) * horizon).clamp(min=1e-3)
+    preds_rand, _ = model.forward_at(x, t_span, taus)
+    grid_targets = torch.cat([x[:, 0, -1].reshape(-1, 1, 1), yy], dim=1)
+    base = taus.floor().clamp(max=horizon - 1).long()
+    frac = (taus - base.float()).reshape(1, -1, 1)
+    rand_targets = grid_targets[:, base, :] * (1 - frac) + grid_targets[:, base + 1, :] * frac
+    return 0.5 * (((preds_grid - yy) ** 2).mean() + ((preds_rand - rand_targets) ** 2).mean())
+
+
+def test_training_loss_keeps_the_published_protocol():
+    """Same seed, same dropout samples, same random offsets: the capture-safe
+    loss equals the 0.4/0.5.0 loss. The only difference is where the off-grid
+    pass's solver grid ends (the horizon instead of the largest offset)."""
     from apdtflow.models.apdtflow import APDTFlow
 
     torch.manual_seed(0)
     model = APDTFlow(num_scales=3, input_channels=1, filter_size=5, hidden_dim=8,
                      output_dim=1, forecast_horizon=6, history_length=12,
-                     decoder_type="continuous")
-    calls = {"encode": 0, "decode": 0}
-    encode, decode = model._encode, model.decoder._decode_sorted
-
-    def counting_encode(*a, **k):
-        calls["encode"] += 1
-        return encode(*a, **k)
-
-    def counting_decode(*a, **k):
-        calls["decode"] += 1
-        return decode(*a, **k)
-
-    model._encode = counting_encode
-    model.decoder._decode_sorted = counting_decode
-    x, y = torch.randn(4, 1, 12), torch.randn(4, 1, 6)
-    loss = model._continuous_training_loss(x, y, torch.linspace(0, 1, 12))
-    loss.backward()
-    assert calls == {"encode": 1, "decode": 1}
-    assert torch.isfinite(loss)
+                     decoder_type="continuous").train()
+    x, y, t_span = torch.randn(4, 1, 12), torch.randn(4, 1, 6), torch.linspace(0, 1, 12)
+    for seed in range(5):
+        torch.manual_seed(seed)
+        expected = _published_training_loss(model, x, y, t_span)
+        torch.manual_seed(seed)
+        got = model._continuous_training_loss(x, y, t_span)
+        torch.testing.assert_close(got, expected, rtol=1e-4, atol=1e-6)
+    got.backward()
     assert model.decoder.skip.weight.grad is not None
     assert model.dynamics_module.global_net[0].weight.grad is not None
 

@@ -240,17 +240,24 @@ class APDTFlow(nn.Module):
         horizon = self.forecast_horizon
         y = y_batch.transpose(1, 2)  # (B, H, out)
 
-        # One encoder pass and one decoder ODE solve serve both terms: the
-        # integer grid and the random queries all lie in (0, horizon], so the
-        # decoder integrates the same interval either way. Running them
-        # separately doubled the cost of every training step.
-        fused_seq, x_orig = self._encode(x_batch, t_span, exog=exog)
+        # Two encoder passes, each with its own dropout sample, in the order
+        # every published result was trained with (grid pass, the random
+        # offsets, then the off-grid pass). Sharing one pass halves the cost
+        # of a step, but measured worse event timing on the NASA battery
+        # audit (10 seeds), so the original protocol is kept.
         grid_offsets = torch.arange(1, horizon + 1, dtype=torch.float32, device=device)
-        taus = self._training_taus(horizon, device)
-        preds, _ = self.decoder.forward_train(
-            fused_seq[:, -1, :], x_orig.squeeze(1), torch.cat([grid_offsets, taus])
+        fused_seq, x_orig = self._encode(x_batch, t_span, exog=exog)
+        preds_grid, _ = self.decoder.forward_train(
+            fused_seq[:, -1, :], x_orig.squeeze(1), grid_offsets
         )
-        preds_grid, preds_rand = preds[:, :horizon], preds[:, horizon:]
+        taus = self._training_taus(horizon, device)
+        fused_seq, x_orig = self._encode(x_batch, t_span, exog=exog)
+        # forward_train sizes its solver grid from the horizon, so the
+        # horizon is queried last and its prediction dropped.
+        preds_rand, _ = self.decoder.forward_train(
+            fused_seq[:, -1, :], x_orig.squeeze(1), torch.cat([taus, grid_offsets[-1:]])
+        )
+        preds_rand = preds_rand[:, :horizon]
 
         # Grid loss at integer offsets.
         loss_grid = ((preds_grid - y) ** 2).mean()

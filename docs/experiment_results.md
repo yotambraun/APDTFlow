@@ -10,13 +10,11 @@ in [METHODOLOGY.md](METHODOLOGY.md).
 > (Section 3.1) showed seed-to-seed differences larger than the gap to the linear
 > baseline, so treat single-seed wins as provisional.
 >
-> **Calibration protocol of these numbers.** They were measured with apdtflow 0.4.0,
-> which calibrated conformal intervals and `predict_when` windows on the training
-> windows themselves (in-sample). Since 0.5.0 the library holds the most recent 20% of
-> windows out for calibration by default. The demo scripts pass
-> `calibration_split=0.0` so the numbers below stay reproducible;
-> `experiments/audit_predict_when.py` defaults to the held-out protocol
-> (`--calibration-split 0` reproduces the committed sunspots result). Speed numbers
+> **Calibration protocol of these numbers.** Conformal intervals and `predict_when`
+> windows are calibrated on the training windows (in-sample), the library default and
+> the protocol of every audit here. `--calibration-split 0.2` on the audit scripts
+> holds the most recent 20% of windows out instead; [METHODOLOGY.md](METHODOLOGY.md)
+> compares the two on the battery and sunspots audits. Speed numbers
 > (CPU vs GPU) are in [gpu_and_performance.md](gpu_and_performance.md).
 
 ---
@@ -97,22 +95,30 @@ seed (3) on the June environment. Re-running the same script on a different mach
 and PyTorch version (Intel i7-12700H, CPU, PyTorch 2.14.1, Python 3.12) did not
 reproduce it: with seed 3 the 0.4.0 code gave a pooled timing MAE of 10.46 (coverage
 56%) and the 0.5.0 code gave 10.46 as well, so the difference comes from the
-environment, not from 0.5.0. Across four seeds with 0.5.0
-(`python experiments/battery_eol_demo.py --seed S --out-dir /tmp/battery_S`):
+environment, not from 0.5.0. Across ten seeds with the released 0.5.0 code (CPU;
+`python experiments/battery_eol_demo.py --seed S --out-dir /tmp/battery_S`):
 
-| Seed | Pooled timing MAE | Linear | Coverage (90% target) | Catch | B0005 MAE |
+| Seed | Pooled timing MAE | Linear | B0005 coverage (90% target) | Catch | B0005 MAE |
 |---|---|---|---|---|---|
-| 0 | **9.04** | 9.66 | 100% | 49% | 2.40 |
-| 1 | **9.49** | 9.66 | 100% | 44% | 4.00 |
-| 2 | 11.18 | **9.66** | 87% | 51% | 6.75 |
+| 0 | **9.08** | 9.66 | 100% | 49% | 2.48 |
+| 1 | **9.54** | 9.66 | 100% | 43% | 4.11 |
+| 2 | 11.77 | **9.66** | 90% | 52% | 7.79 |
 | 3 | 10.46 | **9.66** | 56% | 26% | 5.28 |
-| mean | 10.04 | 9.66 | | | |
+| 4 | 12.00 | **9.66** | 80% | 49% | 8.42 |
+| 5 | 11.47 | **9.66** | 0% | 18% | 7.33 |
+| 6 | 10.50 | **9.66** | 100% | 49% | 5.36 |
+| 7 | 11.64 | **9.66** | 100% | 49% | 7.68 |
+| 8 | 10.15 | **9.66** | 7% | 25% | 5.64 |
+| 9 | 10.12 | **9.66** | 100% | 49% | 4.59 |
+| mean | 10.67 | 9.66 | 73% | 41% | 5.87 |
 
-On this evidence APDTFlow is **on par with linear extrapolation** on the 3-cell battery
-audit, not ahead of it: it wins on two seeds and loses on two. The June row is one
-favourable draw. The FD001 and FD002 audits below have not been re-run across seeds
-yet. Until they are, read every single-seed row on this page as one draw, not a
-settled ranking.
+On this evidence APDTFlow is **slightly behind linear extrapolation on average** on the
+3-cell battery audit (mean pooled MAE 10.67 vs 9.66, range 9.08–12.00): it beats the
+line on 2 of 10 seeds. The June row is one favourable draw. Window coverage varies from
+0% to 100% between seeds (the 30 windows of the held-out cell miss or hit together),
+and censoring stays honest on every seed (B0007: no false alarms). The FD001 and FD002
+audits below have not been re-run across seeds yet. Until they are, read every
+single-seed row on this page as one draw, not a settled ranking.
 
 ### 3.2 Turbofan degradation, C-MAPSS FD001
 

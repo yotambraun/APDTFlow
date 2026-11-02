@@ -187,8 +187,8 @@ linear extrapolation beats the model on FD002's full event set, multivariate fus
 trades coverage for sharpness rather than dominating, and cross-unit window coverage
 runs below its target on the engine audits. APDTFlow's measured advantages are
 timing wins on battery and FD001 in these single-seed runs (including FD001's matched
-subset, 8.5 vs 9.7; a 4-seed battery re-run in November 2026 put APDTFlow on par
-with linear, mean 10.0 vs 9.7, see experiment_results.md §3.1),
+subset, 8.5 vs 9.7; a 10-seed battery re-run in November 2026 put APDTFlow slightly
+behind linear on average, mean 10.7 vs 9.7, see experiment_results.md §3.1),
 near-zero false alarms everywhere (0/2,638 no-crossing windows on FD002), and
 beating persistence by 2–7 cycles on every audit. The base forecaster's general
 accuracy is reported honestly in the README: it beats seasonal-naive on 3 of 6

@@ -122,8 +122,9 @@ GPU and device support done properly (including CUDA-graph training), a working
   gains `--seed` and `--out-dir`) on different hardware and PyTorch (i7-12700H,
   PyTorch 2.14.1). The published June number (pooled timing MAE 8.3) did not
   reproduce, with the 0.4.0 code as well as 0.5.0 (both 10.46 with the published
-  seed). Across 4 seeds APDTFlow scored 9.0–11.2 (mean 10.0) against linear
-  extrapolation's 9.7: on par, not ahead. README, docs and site now present the
+  seed). Across 10 seeds with the released code APDTFlow scored 9.1–12.0 (mean
+  10.7) against linear extrapolation's 9.7: slightly behind on average, ahead on 2
+  of 10 seeds. README, docs and site now present the
   June audits as single-seed results and show the re-run.
 
 ### Docs and website

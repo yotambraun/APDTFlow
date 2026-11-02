@@ -86,7 +86,7 @@ export const questions = [
 export const evidenceRows = [
   {
     audit: 'Battery end-of-life',
-    detail: '3 cells, leave-one-battery-out; June, one seed (4-seed re-run: on par with linear)',
+    detail: '3 cells, leave-one-battery-out; June, one seed (10-seed re-run: mean 10.7, behind linear)',
     apdtflow: '8.3',
     linear: '9.7',
     persistence: '15.4',
@@ -113,7 +113,7 @@ export const evidenceRows = [
 export const evidenceChips = [
   '0 false alarms across 2,638 no-crossing windows',
   'coverage 96 / 40 / 54 vs a 90% target',
-  'battery re-run, 4 seeds: on par with linear',
+  'battery re-run, 10 seeds: mean 10.7 vs linear 9.7',
   'a script in experiments/ for every number',
 ];
 

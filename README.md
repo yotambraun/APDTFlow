@@ -93,13 +93,13 @@ single fit is one draw.
 These are single-seed runs from June 2026. In them APDTFlow beat both baselines on
 the battery and FD001 audits and **lost to linear extrapolation on FD002** (while
 posting zero false alarms across its 2,638 no-crossing windows). **A November re-run of the battery
-audit across 4 seeds, on different hardware and PyTorch, put APDTFlow on par with
-linear extrapolation** (pooled MAE 9.0–11.2, mean 10.0, vs 9.7; it won on 2 of 4
-seeds). Read the single-seed rows as one draw, not a ranking. FD001 and FD002 have
+audit across 10 seeds, on different hardware and PyTorch, put APDTFlow slightly behind
+linear extrapolation on average** (pooled MAE 9.1–12.0, mean 10.7, vs 9.7; it won on 2
+of 10 seeds), with honest censoring on every seed. Read the single-seed rows as one draw, not a ranking. FD001 and FD002 have
 not been re-run across seeds yet. Time-window coverage measured 96% / 40% / 54%
-against a 90% target in June (56–100% across the battery re-run seeds). These audits
-calibrated on training windows (the 0.4.0 protocol, which the scripts pin); 0.5.0
-holds calibration windows out by default. Details and per-seed tables:
+against a 90% target in June (0–100% across the battery re-run seeds, mean 73%). These audits
+calibrate on the training windows, the library default ([METHODOLOGY.md](docs/METHODOLOGY.md)
+compares it with holding windows out). Details and per-seed tables:
 [docs/experiment_results.md](docs/experiment_results.md).
 
 ![trust](assets/images/apdtflow_trust_panel.png)

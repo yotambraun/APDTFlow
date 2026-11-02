@@ -457,7 +457,9 @@ def main() -> None:
     }
     out_json = RESULTS_DIR / "battery_eol.json"
     out_json.write_text(json.dumps(payload, indent=2, default=float))
-    print(f"\nwrote {out_json.relative_to(REPO)}")
+    # --out-dir may point outside the repository.
+    shown = out_json.relative_to(REPO) if out_json.is_relative_to(REPO) else out_json
+    print(f"\nwrote {shown}")
 
     # --- plots
     forecaster, hero_records, hero_band = hero_assets

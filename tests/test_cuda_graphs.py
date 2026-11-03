@@ -52,8 +52,10 @@ def test_forward_train_matches_forward(device):
     with torch.no_grad():
         expected, expected_lv = model.decoder(fused[:, -1, :], x_orig.squeeze(1), offsets)
         got, got_lv = model.decoder.forward_train(fused[:, -1, :], x_orig.squeeze(1), offsets)
-    torch.testing.assert_close(got, expected, rtol=0, atol=0)
-    torch.testing.assert_close(got_lv, expected_lv, rtol=0, atol=0)
+    # Same math, but forward() solves the deduplicated offsets and forward_train()
+    # the static grid, so float32 rounding may differ in the last bit on some CPUs.
+    torch.testing.assert_close(got, expected, rtol=1e-6, atol=1e-6)
+    torch.testing.assert_close(got_lv, expected_lv, rtol=1e-6, atol=1e-6)
 
 
 @pytest.mark.parametrize("device", DEVICES)

@@ -169,6 +169,7 @@ method and the measured reason AMP is not used:
 - **Multivariate** sensor fusion (`feature_cols=`) with readable `sensor_importance_`;
   per-regime normalization for multi-condition equipment
 - **Fleet API**: `predict_when_fleet()` returns an act-by-sorted schedule ready for CSV
+  (train on a whole fleet with `fit(df, ..., group_col="unit")`, so no window spans two units)
 - Exogenous and categorical features, rolling-origin backtesting
   (`historical_forecasts`), MASE/sMAPE/CRPS/coverage metrics, `score_recent()` drift checks
 - Production plumbing: `save`/`load` with scalers and calibration, TorchScript export,

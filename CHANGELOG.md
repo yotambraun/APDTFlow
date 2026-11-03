@@ -5,7 +5,7 @@ All notable changes to APDTFlow will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.0] - Unreleased
+## [0.5.0] - 2026-11-03
 
 GPU and device support done properly (including CUDA-graph training), a working
 `calibration_split`, and a single modern packaging setup.
@@ -35,6 +35,14 @@ GPU and device support done properly (including CUDA-graph training), a working
   (they were live references that kept changing, so the restore was a no-op).
 
 ### Added
+- `fit(df, ..., group_col="unit")` for several independent series in one DataFrame
+  (a fleet of batteries, engines or assets). Training windows never span two units,
+  rows are ordered by unit and by `date_col` within a unit (the sampling step is
+  measured within units), and `calibration_split > 0` holds out whole units instead of
+  the most recent windows. Without it, rows are one series, and a window that crosses
+  from one unit into the next trains and calibrates on a jump that never happens.
+  Opt-in: the default and every published audit are unchanged; the audits have not
+  been re-run with it yet. `groups_` and `group_col_` are saved with the model.
 - `device="auto" | "cuda" | "mps" | "cpu"` (or `"cuda:1"`, or a `torch.device`)
   on `APDTFlowForecaster`, `APDTFlowForecaster.load`, and `apdtflow train/infer
   --device`; `apdtflow.resolve_device()` exposes the same resolution logic.

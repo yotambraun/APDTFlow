@@ -233,6 +233,11 @@ class APDTFlowForecaster:
         self.target_col_: Optional[str] = None
         self.date_col_: Optional[str] = None
         self.data_df_: Optional[pd.DataFrame] = None
+        # Several independent series in one frame, fit(group_col=...) (NEW in v0.5.0)
+        self.group_col_: Optional[str] = None
+        self.groups_: Optional[List] = None
+        self._row_groups_: Optional[np.ndarray] = None
+        self.window_groups_: Optional[np.ndarray] = None
 
         # Residual analysis (NEW in v0.3.0)
         self.residuals_: Optional[np.ndarray] = None
@@ -460,11 +465,7 @@ class APDTFlowForecaster:
             if target_col is None:
                 raise ValueError("target_col must be specified for DataFrame input")
             if date_col and date_col in data.columns:
-                data = data.sort_values(date_col)
-                dates = pd.to_datetime(data[date_col])
-                self.last_date_ = dates.iloc[-1]
-                if len(dates) > 1:
-                    self.freq_delta_ = pd.Timedelta(np.median(np.diff(dates.values)))
+                self._set_dates(data, date_col)
             series = data[target_col].values
 
             # Handle exogenous variables (including categorical)
@@ -503,7 +504,7 @@ class APDTFlowForecaster:
         exog_y_list: List[np.ndarray] = []
         total_length = self.history_length + self.forecast_horizon
 
-        for i in range(len(series_norm) - total_length + 1):
+        for i in self._window_starts(len(series_norm)):
             X_list.append(series_norm[i:i + self.history_length])
             y_list.append(series_norm[i + self.history_length:i + total_length])
 
@@ -513,8 +514,9 @@ class APDTFlowForecaster:
 
         if len(X_list) == 0:
             raise ValueError(
-                f"Data too short. Need at least {total_length} points, "
-                f"got {len(series_norm)}"
+                f"Data too short. Need at least {total_length} points"
+                + (" in at least one group" if self._row_groups_ is not None else "")
+                + f", got {len(series_norm)}"
             )
 
         X = torch.tensor(np.array(X_list), dtype=torch.float32).unsqueeze(1)
@@ -543,11 +545,7 @@ class APDTFlowForecaster:
         columns. Each channel is independently z-normalized.
         """
         if date_col and date_col in data.columns:
-            data = data.sort_values(date_col)
-            dates = pd.to_datetime(data[date_col])
-            self.last_date_ = dates.iloc[-1]
-            if len(dates) > 1:
-                self.freq_delta_ = pd.Timedelta(np.median(np.diff(dates.values)))
+            self._set_dates(data, date_col)
 
         channels = [target_col] + list(self.feature_cols_ or [])
         matrix = data[channels].to_numpy(dtype=float).T  # (C, N)
@@ -562,22 +560,71 @@ class APDTFlowForecaster:
         self.scaler_std_ = float(stds[0])
 
         total_length = self.history_length + self.forecast_horizon
-        n_windows = norm.shape[1] - total_length + 1
-        if n_windows <= 0:
+        starts = self._window_starts(norm.shape[1])
+        if len(starts) == 0:
             raise ValueError(
-                f"Data too short. Need at least {total_length} points, "
-                f"got {norm.shape[1]}"
+                f"Data too short. Need at least {total_length} points"
+                + (" in at least one group" if self._row_groups_ is not None else "")
+                + f", got {norm.shape[1]}"
             )
-        X = np.stack([norm[:, i:i + self.history_length] for i in range(n_windows)])
+        X = np.stack([norm[:, i:i + self.history_length] for i in starts])
         y = np.stack([
             norm[0, i + self.history_length:i + total_length]
-            for i in range(n_windows)
+            for i in starts
         ])
         self.last_sequence_ = norm[:, -self.history_length:]
         return (
             torch.tensor(X, dtype=torch.float32),
             torch.tensor(y, dtype=torch.float32).unsqueeze(1),
         )
+
+    def _set_dates(self, data: pd.DataFrame, date_col: str) -> None:
+        """Record the last timestamp and the sampling step.
+
+        Ungrouped data is sorted by date first. Grouped data was already
+        ordered by group, then date, in :meth:`fit`; its step is measured
+        within groups only.
+        """
+        if self._row_groups_ is None:
+            data = data.sort_values(date_col)
+        dates = pd.to_datetime(data[date_col]).to_numpy()
+        self.last_date_ = pd.Timestamp(dates[-1])
+        if len(dates) > 1:
+            steps = np.diff(dates)
+            if self._row_groups_ is not None:
+                steps = steps[self._row_groups_[1:] == self._row_groups_[:-1]]
+            if len(steps):
+                self.freq_delta_ = pd.Timedelta(np.median(steps))
+
+    def _window_starts(self, n_rows: int) -> List[int]:
+        """First row of every training window; with groups, only windows inside one group."""
+        total_length = self.history_length + self.forecast_horizon
+        starts = range(n_rows - total_length + 1)
+        groups = self._row_groups_
+        if groups is None:
+            self.window_groups_ = None
+            return list(starts)
+        kept = [i for i in starts if groups[i] == groups[i + total_length - 1]]
+        self.window_groups_ = groups[kept] if kept else groups[:0]
+        return kept
+
+    def _order_by_group(self, data: pd.DataFrame, group_col: str, date_col: Optional[str]):
+        """Rows grouped by ``group_col`` (groups in order of first appearance), by date within a group."""
+        if group_col not in data.columns:
+            raise ValueError(f"group_col {group_col!r} not found in DataFrame")
+        if data[group_col].isna().any():
+            raise ValueError(f"group_col {group_col!r} contains missing values")
+        order = pd.Index(pd.unique(data[group_col]))
+        keys = pd.DataFrame({"_g": order.get_indexer(data[group_col])}, index=data.index)
+        sort_cols = ["_g"]
+        if date_col and date_col in data.columns:
+            keys["_d"] = pd.to_datetime(data[date_col])
+            sort_cols.append("_d")
+        positions = keys.reset_index(drop=True).sort_values(sort_cols, kind="stable").index
+        ordered = data.iloc[positions]
+        self._row_groups_ = keys["_g"].to_numpy()[positions]
+        self.groups_ = order.tolist()
+        return ordered
 
     def _calibration_split(self, dataset):
         """Split training windows from held-out conformal calibration windows.
@@ -600,6 +647,8 @@ class APDTFlowForecaster:
             raise ValueError(f"calibration_split must be in [0, 1), got {frac!r}")
         if frac == 0.0:
             return dataset, dataset, True
+        if self.window_groups_ is not None:
+            return self._calibration_split_by_group(dataset, frac)
         n = len(dataset)
         n_cal = int(round(n * frac))
         gap = max(self.forecast_horizon - 1, 0)
@@ -625,6 +674,30 @@ class APDTFlowForecaster:
         calib_part = torch.utils.data.Subset(dataset, range(n - n_cal, n))
         return train_part, calib_part, False
 
+    def _calibration_split_by_group(self, dataset, frac: float):
+        """Hold out whole groups (the last ``round(frac * n_groups)``, at least one) for calibration."""
+        assert self.window_groups_ is not None
+        present = list(dict.fromkeys(self.window_groups_.tolist()))
+        n_cal = max(1, int(round(len(present) * frac)))
+        if n_cal >= len(present):
+            warnings.warn(
+                f"Only {len(present)} group(s) with a full training window: too few to "
+                f"hold out calibration_split={frac} of them for conformal calibration. "
+                f"Falling back to in-sample calibration; intervals will be optimistic.",
+                UserWarning,
+            )
+            return dataset, dataset, True
+        held = set(present[-n_cal:])
+        mask = np.isin(self.window_groups_, list(held))
+        if self.verbose:
+            logger.info(
+                f"Conformal calibration: {int(mask.sum())} windows of {n_cal} held-out "
+                f"group(s), {int((~mask).sum())} training windows"
+            )
+        train_part = torch.utils.data.Subset(dataset, np.flatnonzero(~mask).tolist())
+        calib_part = torch.utils.data.Subset(dataset, np.flatnonzero(mask).tolist())
+        return train_part, calib_part, False
+
     def fit(
         self,
         data: Union[pd.DataFrame, np.ndarray],
@@ -635,7 +708,8 @@ class APDTFlowForecaster:
         future_exog_cols: Optional[List[str]] = None,
         categorical_cols: Optional[List[str]] = None,
         future_categorical_cols: Optional[List[str]] = None,
-        log_callback: Optional[Callable] = None
+        log_callback: Optional[Callable] = None,
+        group_col: Optional[str] = None,
     ):
         """
         Fit the forecasting model.
@@ -663,6 +737,18 @@ class APDTFlowForecaster:
             Names of categorical variable columns (NEW in v0.2.3)
         future_categorical_cols : list of str, optional
             Subset of categorical_cols that are known in future (NEW in v0.2.3)
+        group_col : str, optional
+            Column naming the unit each row belongs to (an asset, a battery,
+            an engine), for several independent series in one DataFrame
+            (NEW in v0.5.0). Training windows never span two units, rows are
+            ordered by unit (in order of first appearance) and by
+            ``date_col`` within a unit, and ``calibration_split > 0`` holds
+            out whole units rather than the most recent windows. ``predict``
+            and ``predict_when`` continue the last unit; use
+            ``predict_when_fleet`` for each unit's own recent history.
+            Without it, rows are one series, and a window crossing from one
+            unit into the next trains and calibrates on a jump that never
+            happens.
 
         Returns
         -------
@@ -705,6 +791,15 @@ class APDTFlowForecaster:
 
         # Validate data before proceeding
         self._validate_data(data, target_col, date_col, exog_cols, categorical_cols)
+
+        self._row_groups_ = None
+        self.groups_ = None
+        self.window_groups_ = None
+        self.group_col_ = group_col
+        if group_col is not None:
+            if not isinstance(data, pd.DataFrame):
+                raise ValueError("group_col requires DataFrame input")
+            data = self._order_by_group(data, group_col, date_col)
 
         # Store column names
         self.target_col_ = target_col
@@ -2514,6 +2609,8 @@ class APDTFlowForecaster:
             # calibration data behind predict_at intervals and predict_when
             # time windows (including already-computed threshold quantiles).
             'last_date': self.last_date_,
+            'group_col': self.group_col_,
+            'groups': self.groups_,
             'freq_delta': self.freq_delta_,
             'calib_X': self._calib_X_.numpy() if self._calib_X_ is not None else None,
             'calib_exog': self._calib_exog_.numpy() if self._calib_exog_ is not None else None,
@@ -2663,6 +2760,8 @@ class APDTFlowForecaster:
 
         # Restore continuous-time state (v0.4.0)
         model.last_date_ = state.get('last_date')
+        model.group_col_ = state.get('group_col')
+        model.groups_ = state.get('groups')
         model.freq_delta_ = state.get('freq_delta')
         calib_X = state.get('calib_X')
         model._calib_X_ = torch.tensor(calib_X) if calib_X is not None else None
